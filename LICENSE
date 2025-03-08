@@ -1,3 +1,53 @@
+NPC Studio License (Based on AGPL-3.0)
+Overview
+
+This license for 'NPC Studio' software is based on the GNU Affero General Public License v3.0 (AGPL-3.0, added below) with additional restrictions on commercial hosting and resale.
+
+                            License Terms
+
+                            Base License
+
+This software is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0), which requires that:
+
+Source code must be made available when the software is distributed.
+Modified versions must be released under the same license.
+Anyone who interacts with the software over a network must be able to receive the source code.
+
+NPC Studio is an open-source product that has been developed in order to facilitate the management of NPC Teams as defined within the npcsh agent framework. 
+NPC teams consist of AI Agents, tools, and context elements and NPC Studio makes it straightforward to interact with a global NPC team or a specific project's NPC team. 
+
+                            Additional Restrictions
+In addition to the terms of the AGPL-3.0, the following restrictions apply:
+
+-Commercial Hosting Restriction: This NPC Studio software (principally the Graphical User Interface) may not be offered as a Software-as-a-Service (SaaS) by any entity other than the original licensor or those with express permission granted by the original licensor. No other third party may host, operate, or provide network access to this software as a service for others.
+
+-Resale Prohibition: This software may not be sold, relicensed, or commercially distributed as a standalone product by any entity other than the original licensor or those with express permission granted by the original licensor.
+
+-Permitted Commercial Use: This software may be used or modified for commercial purposes, including: 
+
+1. Internal business operations
+2. Integration into commercial workflows
+3. Use within commercial organizations as an internal tool
+4. Supporting commercial activities
+5. NPC Teams that have been built or developed within the NPC Studio can be deployed and used as part of a Software-as-a-Service offering or in packaged software made for sale and distribution. In such cases, it is NOT required that the entities share any of the developed source materials that are specific to the NPC Team.
+
+
+
+                            Enforcement
+These additional restrictions are intended to supplement and not replace any terms of the AGPL-3.0. In case of conflict, these additional restrictions take precedence over any permissive aspects of the AGPL-3.0 that would otherwise allow activities prohibited by these additional restrictions.
+
+                            Disclaimer
+This license is provided without warranty of any kind. The licensor is not liable for any damages arising from the use of this software.
+
+                            Contact
+For licensing inquiries, please contact info@npcworldwi.de .
+
+
+
+
+
+
+
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 
