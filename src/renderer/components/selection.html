@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: rgba(0,0,0,0.2);
+        }
+        #selection {
+            position: absolute;
+            border: 2px solid #00ff00;
+            background: rgba(0,255,0,0.1);
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="selection"></div>
+    <script>
+        const { ipcRenderer } = require('electron');
+        const selection = document.getElementById('selection');
+        let isDrawing = false;
+        let startX, startY;
+
+        document.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            selection.style.display = 'block';
+            selection.style.left = startX + 'px';
+            selection.style.top = startY + 'px';
+            selection.style.width = '0';
+            selection.style.height = '0';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+
+            const width = e.clientX - startX;
+            const height = e.clientY - startY;
+
+            selection.style.width = Math.abs(width) + 'px';
+            selection.style.height = Math.abs(height) + 'px';
+            selection.style.left = (width < 0 ? e.clientX : startX) + 'px';
+            selection.style.top = (height < 0 ? e.clientY : startY) + 'px';
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (!isDrawing) return;
+            isDrawing = false;
+
+            const bounds = {
+                x: parseInt(selection.style.left),
+                y: parseInt(selection.style.top),
+                width: parseInt(selection.style.width),
+                height: parseInt(selection.style.height)
+            };
+
+            // Only send if we actually drew something
+            if (bounds.width > 0 && bounds.height > 0) {
+                console.log('Sending selection-complete with bounds:', bounds);
+                ipcRenderer.send('selection-complete', bounds);
+            } else {
+                console.log('Cancelling selection');
+                ipcRenderer.send('selection-cancel');
+            }
+        });
+
+        // Cancel on escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                console.log('Escape pressed, cancelling');
+                ipcRenderer.send('selection-cancel');
+            }
+        });
+    </script>
+</body>
+</html>

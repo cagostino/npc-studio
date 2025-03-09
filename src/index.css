@@ -1,0 +1,152 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body.dark-mode {
+    background-color: #222; /* Dark background for the entire page */
+    color: white;
+}
+
+body.light-mode {
+    background-color: #fff; /* White background for light mode */
+    color: #333; /* Dark text for light mode */
+}
+
+.chat-container {
+    background-color: inherit;  /* Inherit the background color from body */
+    color: inherit; /* Inherit text color from body */
+}
+
+
+.send-button {
+    background-color: #4caf50;
+    color: white;
+}
+
+
+
+/* Chat Container */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 10px;
+    background-color: inherit;
+    color: inherit;
+    overflow: hidden;
+}
+
+/* Dark Mode for Chat Container - inherits */
+.chat-container.dark-mode {
+    background-color: inherit;
+    color: white;
+}
+
+/* Light Mode for Chat Container */
+.chat-container.light-mode {
+    background-color: white;
+    color: #333;
+}
+
+/* Message List */
+.message-list {
+    flex-grow: 1;
+    overflow-y: auto;
+    margin-bottom: 15px;
+    padding: 10px;
+    background-color: inherit;
+    border-radius: 10px;
+    max-height: calc(100vh - 120px);
+    box-sizing: border-box;
+}
+
+/* Dark Mode for Message List - inherits */
+.message-list.dark-mode {
+    background-color: inherit;
+    color: white;
+}
+
+/* Light Mode for Message List */
+.message-list.light-mode {
+    background-color: white;
+    color: #333;
+}
+
+/* Input and Button Styles */
+.message-input-container {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-top: 10px;
+}
+
+.message-input {
+    width: 80%;
+    padding: 12px;
+    font-size: 16px;
+    border: 2px solid #444;
+    border-radius: 8px;
+    resize: none;
+    background-color: inherit;
+    color: inherit;
+    overflow-y: auto;
+    max-height: 120px;
+    box-sizing: border-box;
+    margin-right: 10px;
+}
+
+/* Dark Mode for Input - inherits */
+.message-input.dark-mode {
+    background-color: inherit;
+    color: white;
+}
+
+/* Light Mode for Input */
+.message-input.light-mode {
+    background-color: white;
+    color: #333;
+}
+
+.message-input:focus {
+    border-color: #4caf50;
+    outline: none;
+    background-color: inherit;
+}
+
+.send-button {
+    padding: 12px 20px;
+    background-color: #4caf50;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.send-button:hover {
+    background-color: #45a049;
+}
+
+.send-button:disabled {
+    background-color: #ddd;
+    cursor: not-allowed;
+}
+
+/* Theme Toggle Button */
+.theme-toggle-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    padding: 10px;
+    border: none;
+    background-color: #4caf50;
+    color: white;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 18px;
+}
+
+.theme-toggle-btn:hover {
+    background-color: #45a049;
+}

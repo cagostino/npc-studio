@@ -1,0 +1,75 @@
+{
+  "name": "npc-studio",
+  "version": "1.0.0",
+  "description": "The premier interface for the npcsh interpreter.",
+  "author": "Chris Agostino <info@npcworldwi.de>",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "vite",
+    "build": "electron-builder",
+    "preview": "vite preview",
+    "rebuild": "electron-rebuild",
+    "postinstall": "electron-rebuild",
+    "electron:build": "electron-builder",
+    "pack": "npm run build && npm run electron:build"
+  },
+  "build": {
+    "appId": "com.npc_studio.chat",
+    "productName": "npc-studio",
+    "files": [
+      "dist/**/*",
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist-electron"
+    },
+    "linux": {
+      "target": [
+        "deb",
+        "AppImage"
+      ],
+      "category": "Utility",
+      "icon": "assets/icon.png"
+    },
+    "extraResources": [
+      {
+        "from": "resources/backend/",
+        "to": "resources/backend/",
+        "filter": ["**/*"]
+      }
+    ]
+
+    },
+  "dependencies": {
+    "@headlessui/react": "^2.2.0",
+    "@supabase/supabase-js": "^2.47.15",
+    "better-sqlite3": "^11.8.1",
+    "debounce": "^2.0.0",
+    "electron-store": "^10.0.1",
+    "lucide-react": "^0.471.1",
+    "node-fetch": "^2.7.0",
+    "os": "^0.1.2",
+    "path": "^0.12.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.3",
+    "sqlite3": "^5.0.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^25.9.8",
+    "electron-builder": "^24.13.1",
+    "electron-rebuild": "^3.2.9",
+    "eslint": "^9.18.0",
+    "eslint-plugin-react": "^7.37.4",
+    "postcss": "^8.5.1",
+    "supabase": "^2.6.8",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.2.1"
+  }
+}
