@@ -1329,11 +1329,11 @@ const loadDirectoryStructure = async (dirPath) => {
                 <option value="gpt-4o">gpt-4o | openai</option>
                 <option value="claude-3-5-haiku-latest">claude-3-5-haiku | anthropic (text only) </option>
                 <option value="claude-3-5-sonnet-latest">claude-3-5-sonnet | anthropic </option>
+                <option value="deepseek-chat">deepseek-chat | deepseek </option>
+                <option value="deepseek-reasoner">deepseek-reasoner | deepseek </option>
                 <option value="gemini-1.5-flash">gemini-1-5-flash | google </option>
                 <option value="gemini-2.0-flash">gemini-1-5-flash | google </option>
                 <option value="gemini-2.0-flash-lite-preview-02-05">gemini-2.0-flash-lite-preview | google (text only) </option>
-                <option value="deepseek-chat">deepseek-chat | deepseek </option>
-                <option value="deepseek-chat">deepseek-reasoner | deepseek </option>
 
             </select>
             <select
