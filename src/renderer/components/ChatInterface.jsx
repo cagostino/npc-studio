@@ -5,7 +5,7 @@ import {
     ChevronDown,
     ChevronRight,
     Settings,
-    Edit,            // Add this
+    Edit,
     Terminal,
     Image,
     Trash,
@@ -13,10 +13,10 @@ import {
     Plus,
     ArrowUp,
     Camera,
-    MessageSquare,  // Add this
+    MessageSquare,
     ListFilter,
     X,
-    Wrench,    // Add this
+    Wrench,
 } from 'lucide-react';
 import MacroInput from './MacroInput';
 import ConversationList from './ConversationList';
