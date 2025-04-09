@@ -46,3 +46,7 @@ creating .deb and AppImage files in linux. Other OS to be added in the future.
 
 ### License
 NPC Studio is licensed under AGPLv3 with additional terms explicitly prohibiting the offering of third-party SaaS services which provide a user access to any web-hosted version of the software as well as prohibiting the packaged re-sale of the product. Please see the [LICENSE](LICENSE) file for further details.
+
+
+
+# letting ppl see lineage in npc team

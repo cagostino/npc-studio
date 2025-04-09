@@ -90,6 +90,8 @@ contextBridge.exposeInMainWorld('api', {
         return () => ipcRenderer.removeListener('screenshot-captured', wrappedCallback);
     },
 
-    // Shell operations
+    getAvailableModels: (currentPath) => ipcRenderer.invoke('getAvailableModels', currentPath),
+
+    // Shell operationss
     openExternal: (url) => ipcRenderer.invoke('openExternal', url),
 });

@@ -348,6 +348,36 @@ if (!gotTheLock) {
 
 
 
+    ipcMain.handle('getAvailableModels', async (event, currentPath) => {
+      log('Handler: getAvailableModels called for path:', currentPath); // Use your log function
+      if (!currentPath) {
+          log('Error: getAvailableModels called without currentPath');
+          return { models: [], error: 'Current path is required to fetch models.' };
+      }
+      try {
+          const url = `http://127.0.0.1:5337/api/models?currentPath=${encodeURIComponent(currentPath)}`;
+          log('Fetching models from:', url); // Log the URL being called
+
+          const response = await fetch(url);
+
+          if (!response.ok) {
+              const errorText = await response.text();
+              log(`Error fetching models: ${response.status} ${response.statusText} - ${errorText}`);
+              throw new Error(`HTTP error ${response.status}: ${errorText}`);
+          }
+
+          const data = await response.json();
+          log('Received models:', data.models?.length); // Log how many models received
+          return data; // Should be { models: [...], error: null } on success
+
+      } catch (err) {
+          log('Error in getAvailableModels handler:', err); // Log the error
+          // Ensure a consistent error structure is returned
+          return { models: [], error: err.message || 'Failed to fetch models from backend' };
+      }
+  });
+
+
   ipcMain.handle('open_directory_picker', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory']

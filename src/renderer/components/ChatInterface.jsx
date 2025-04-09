@@ -69,6 +69,10 @@ const ChatInterface = () => {
     const [imagePreview, setImagePreview] = useState(null); // State to hold image preview
     const screenshotHandlingRef = useRef(false);
     const activeConversationRef = useRef(null);
+    const [availableModels, setAvailableModels] = useState([]); // <-- New state for models
+    const [modelsLoading, setModelsLoading] = useState(false);   // <-- Loading state
+    const [modelsError, setModelsError] = useState(null);       // <-- Error state
+
 
     // Update ref when activeConversationId changes
     useEffect(() => {
@@ -164,63 +168,120 @@ const ChatInterface = () => {
         setPhotoViewerOpen(true);
     };
 
-
-
-// Modify your initialization useEffect
-useEffect(() => {
-    const init = async () => {
-        try {
-            setLoading(true);
-
-            // Get config first
-            const config = await window.api.getDefaultConfig();
-            console.log('Initial config:', config);
-
-            if (!config || !config.baseDir) {
-                throw new Error('Invalid config received');
+    useEffect(() => {
+        const fetchModels = async () => {
+            if (!currentPath) {
+                console.log("Skipping model fetch: currentPath is not set.");
+                setAvailableModels([]); // Clear models if path is invalid
+                return;
             }
 
-            // Set all config-related state at once
-            setConfig(config);
-            setBaseDir(config.baseDir);
-            setCurrentPath(config.baseDir);
-            console.log('Setting base directory:', config.baseDir);
+            console.log("Fetching available models for path:", currentPath);
+            setModelsLoading(true);
+            setModelsError(null);
+            try {
+                // Use the new API function exposed via preload.js
+                const response = await window.api.getAvailableModels(currentPath);
+                console.log("Models response:", response);
 
-            // Load directory structure after setting path
-            console.log('Loading directory structure for:', config.baseDir);
-            await loadDirectoryStructure(config.baseDir);
+                if (response && response.models && Array.isArray(response.models)) {
+                    setAvailableModels(response.models);
 
+                    // --- Optional: Set default model ---
+                    // If currentModel isn't set or isn't in the new list,
+                    // set it to the config default or the first available model.
+                    const currentModelIsValid = response.models.some(m => m.value === currentModel);
+                    const configModelIsValid = response.models.some(m => m.value === config?.model);
+
+                    if (!currentModel || !currentModelIsValid) {
+                         if (config?.model && configModelIsValid) {
+                             console.log("Setting model from config:", config.model);
+                             setCurrentModel(config.model);
+                         } else if (response.models.length > 0) {
+                            console.log("Setting model to first available:", response.models[0].value);
+                            setCurrentModel(response.models[0].value);
+                         } else {
+                            console.log("No valid models found, clearing currentModel");
+                            setCurrentModel(null); // Or a fallback default like 'llama3.2' if needed
+                         }
+                    }
+                    // --- End Optional ---
+
+                } else if (response && response.error) {
+                   throw new Error(response.error);
+                } else {
+                   throw new Error("Invalid response format received for models.");
+                }
+            } catch (err) {
+                console.error('Error fetching available models:', err);
+                setModelsError(err.message || 'Failed to load models.');
+                setAvailableModels([]); // Clear models on error
+                // Optionally set a default fallback model here too
+                setCurrentModel(config?.model || 'llama3.2'); // Fallback
+            } finally {
+                setModelsLoading(false);
+            }
+        };
+
+        fetchModels();
+    }, [currentPath, config?.model]); // Fetch when path changes or config loads initially
+
+
+    // Modify your initialization useEffect
+    useEffect(() => {
+        const init = async () => {
+            try {
+                setLoading(true);
+
+                // Get config first
+                const config = await window.api.getDefaultConfig();
+                console.log('Initial config:', config);
+
+                if (!config || !config.baseDir) {
+                    throw new Error('Invalid config received');
+                }
+
+                // Set all config-related state at once
+                setConfig(config);
+                setBaseDir(config.baseDir);
+                setCurrentPath(config.baseDir);
+                console.log('Setting base directory:', config.baseDir);
+
+                // Load directory structure after setting path
+                console.log('Loading directory structure for:', config.baseDir);
+                await loadDirectoryStructure(config.baseDir);
+
+            } catch (err) {
+                console.error('Initialization error:', err);
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        init();
+    }, []);
+
+    // Simplify goUpDirectory
+    const goUpDirectory = async () => {
+        try {
+            console.log('goUpDirectory clicked');
+
+            if (!currentPath) {
+                console.log('No current path - this should not happen');
+                return;
+            }
+
+            const newPath = await window.api.goUpDirectory(currentPath);
+            console.log('Going up from:', currentPath, 'to:', newPath);
+
+            setCurrentPath(newPath);
+            await loadDirectoryStructure(newPath);
         } catch (err) {
-            console.error('Initialization error:', err);
+            console.error('Error in goUpDirectory:', err);
             setError(err.message);
-        } finally {
-            setLoading(false);
         }
     };
-
-    init();
-}, []);
-
-// Simplify goUpDirectory
-const goUpDirectory = async () => {
-    try {
-        console.log('goUpDirectory clicked');
-
-        if (!currentPath) {
-            console.log('No current path - this should not happen');
-            return;
-        }
-
-        const newPath = await window.api.goUpDirectory(currentPath);
-        console.log('Going up from:', currentPath, 'to:', newPath);
-
-        setCurrentPath(newPath);
-        await loadDirectoryStructure(newPath);
-    } catch (err) {
-        console.error('Error in goUpDirectory:', err);
-        setError(err.message);
-    }
-};
 
 // Remove duplicate setCurrentPath calls from other functions
 const loadDirectoryStructure = async (dirPath) => {
@@ -1315,36 +1376,40 @@ const loadDirectoryStructure = async (dirPath) => {
             Send
         </button>
         <div className="flex items-center gap-2 mb-2">
-            <select
-                value={currentModel || config?.model}
-                onChange={e => setCurrentModel(e.target.value)}
-                className="bg-gray-800 text-sm rounded px-2 py-1 border border-gray-700"
-            >
-                <option value="llama3.2">llama3.2 | ollama (text only) </option>
-                <option value="deepseek-v3">deepseek-v3 | ollama (text only) </option>
-                <option value="phi4">phi4 | ollama (text only) </option>
-                <option value="llama3.3">llama3.3 | ollama  </option>
-                <option value="llava7b">llama3. | ollama  </option>
-                <option value="gpt-4o-mini">gpt-4o-mini | openai</option>
-                <option value="gpt-4o">gpt-4o | openai</option>
-                <option value="claude-3-5-haiku-latest">claude-3-5-haiku | anthropic (text only) </option>
-                <option value="claude-3-5-sonnet-latest">claude-3-5-sonnet | anthropic </option>
-                <option value="deepseek-chat">deepseek-chat | deepseek </option>
-                <option value="deepseek-reasoner">deepseek-reasoner | deepseek </option>
-                <option value="gemini-1.5-flash">gemini-1-5-flash | google </option>
-                <option value="gemini-2.0-flash">gemini-1-5-flash | google </option>
-                <option value="gemini-2.0-flash-lite-preview-02-05">gemini-2.0-flash-lite-preview | google (text only) </option>
+                            <select
+                                value={currentModel || ''} // Ensure value is controlled, use '' if null
+                                onChange={e => setCurrentModel(e.target.value)}
+                                className="bg-gray-800 text-sm rounded px-2 py-1 border border-gray-700"
+                                disabled={modelsLoading || !!modelsError} // Disable while loading or on error
+                            >
+                                {modelsLoading && <option value="">Loading models...</option>}
+                                {modelsError && <option value="">Error loading models</option>}
+                                {!modelsLoading && !modelsError && availableModels.length === 0 && (
+                                    <option value="">No models available</option>
+                                )}
+                                {!modelsLoading && !modelsError && availableModels.map(model => (
+                                    <option key={model.value} value={model.value}>
+                                        {model.display_name} {/* Use the formatted name from backend */}
+                                    </option>
+                                ))}
+                                {/* Optional: Add a fallback if list is empty after loading? */}
+                                {/* {!modelsLoading && !modelsError && availableModels.length === 0 && config?.model && (
+                                    <option value={config.model}>{config.model} | Default</option>
+                                )} */}
+                            </select>
+                            <select
+                                value={currentNPC || config?.npc || 'sibiji'} // Keep NPC select as is for now
+                                onChange={e => setCurrentNPC(e.target.value)}
+                                className="bg-gray-800 text-sm rounded px-2 py-1 border border-gray-700"
+                            >
+                                {/* You might want to fetch NPCs dynamically too eventually */}
+                                <option value="sibiji">NPC: sibiji </option>
+                                {/* Add other NPCs if needed, or fetch them */}
+                            </select>
+                        </div>
 
-            </select>
-            <select
-                value={currentNPC || config?.npc}
-                onChange={e => setCurrentNPC(e.target.value)}
-                className="bg-gray-800 text-sm rounded px-2 py-1 border border-gray-700"
-            >
-                <option value="sibiji">NPC: sibiji </option>
 
-            </select>
-        </div>
+
 
 
             </form>
