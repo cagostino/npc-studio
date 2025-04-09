@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/cagostino/npc-studio/main/levi.PNG" alt="npc studio logo with Levi the dog howling at the moon">
+</p>
+
 # npc-studio
 
 The AI application for Agent development.
