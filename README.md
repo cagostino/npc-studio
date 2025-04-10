@@ -3,18 +3,22 @@
 </p>
 
 
-# npc-studio
+# NPC Studio
 
-The AI application for Agent development.
+The desktop application purpose built to take advantage of the capabilities of AI agents. NPC Studio lets users build AI agents, interact with them, and orchestrate them in complex workflows or jobs.,
+- NPC Studio stores your messages, screenshots, commands, and more in a local database so you don't have to re-learn or re-discover things anymore.
+- Using your AI agents and preferences, NPC Studio can extract facts from your messages and use them to build a knowledge graph that you can search or that your agents can search when responding to inquiries.
 
-NPC studio is electron-based frontend with a python flask backend.
+
 
 ## Getting Started
 
-Before getting started with development, ensure that you have the following installed
+NPC studio is electron-based frontend with a python flask backend that mainly connects your system
+to the npcsh library, which in turn lets it make use of AI capabilities and other resources. To begin, ensure that you have the following installed
 - [npcsh](https://github.com/cagostino/npcsh)
 - node+npm
 - ollama (if you plan to rely on local models)
+
 
 ```bash
 git clone https://github.com/cagostino/npc-studio.git
