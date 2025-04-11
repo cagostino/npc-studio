@@ -499,6 +499,27 @@ app.on('will-quit', () => {
   });
 
 
+  ipcMain.handle('loadGlobalSettings',  async () => {
+    try {
+        const response = await fetch('http://127.0.0.1:5337/api/settings/global', {
+            method: 'GET',
+            credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        return data
+
+      } catch (err) {
+        console.error('Error loading global settings:', err)
+
+      }
+    }
+  );
+
+
   ipcMain.handle('get_attachment_response', async (_, attachmentData, messages) => {
     try {
       const response = await fetch('http://127.0.0.1:5337/api/get_attachment_response', {
@@ -705,12 +726,40 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
 
   ipcMain.handle('getConversations', async (_, path) => {
     try {
-      const response = await fetch(`http://127.0.0.1:5337/api/conversations?path=${encodeURIComponent(path)}`);
+      console.log('Handler: getConversations called for path:', path);
+      // Add filesystem check to see if directory exists
+      try {
+        await fsPromises.access(path);
+        console.log('Directory exists and is accessible');
+      } catch (err) {
+        console.error('Directory does not exist or is not accessible:', path);
+        return { conversations: [], error: 'Directory not accessible' };
+      }
+
+      const apiUrl = `http://127.0.0.1:5337/api/conversations?path=${encodeURIComponent(path)}`;
+      console.log('Calling API with URL:', apiUrl);
+
+      const response = await fetch(apiUrl);
+
       if (!response.ok) {
+        console.error('API returned error status:', response.status);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      const data = await response.json();
-      console.log('Conversations data:', data);
+
+      const responseText = await response.text();
+      console.log('Raw API response text:', responseText);
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (err) {
+        console.error('Error parsing JSON response:', err);
+        return { conversations: [], error: 'Invalid JSON response' };
+      }
+
+      console.log('Parsed conversations data from API:', data);
+
+      // Ensure we always return in the expected format
       return {
         conversations: data.conversations || []
       };
@@ -722,7 +771,6 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
       };
     }
   });
-
   ipcMain.handle('checkServerConnection', async () => {
     try {
       const response = await fetch('http://127.0.0.1:5337/api/status');
@@ -752,7 +800,35 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
       });
     });
   });
+  ipcMain.handle('read-file-content', async (_, filePath) => {
+    try {
+      const content = await fsPromises.readFile(filePath, 'utf8');
+      return { content, error: null };
+    } catch (err) {
+      console.error('Error reading file:', err);
+      return { content: null, error: err.message };
+    }
+  });
 
+  ipcMain.handle('write-file-content', async (_, filePath, content) => {
+    try {
+      await fsPromises.writeFile(filePath, content, 'utf8');
+      return { success: true, error: null };
+    } catch (err) {
+      console.error('Error writing file:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('delete-file', async (_, filePath) => {
+    try {
+      await fsPromises.unlink(filePath);
+      return { success: true, error: null };
+    } catch (err) {
+      console.error('Error deleting file:', err);
+      return { success: false, error: err.message };
+    }
+  });
   ipcMain.handle('getConversationMessages', async (_, conversationId) => {
     return new Promise((resolve, reject) => {
       const db = new sqlite3.Database(dbPath);
@@ -839,25 +915,38 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
   });
 
   ipcMain.handle('readDirectoryStructure', async (_, dirPath) => {
+    const structure = {};
+    const allowedExtensions = ['.py', '.md', '.js', '.json', '.txt', '.yaml', '.yml', '.html', '.css', '.npc', '.tool'];
+    console.log(`[Main Process] readDirectoryStructure called for: ${dirPath}`); // LOG 1
+
     try {
-      console.log('Reading directory structure for:', dirPath);
+      await fsPromises.access(dirPath, fs.constants.R_OK);
       const items = await fsPromises.readdir(dirPath, { withFileTypes: true });
-      const structure = {};
+      console.log(`[Main Process] Read ${items.length} items from ${dirPath}`); // LOG 2
+
       for (const item of items) {
         const itemPath = path.join(dirPath, item.name);
         if (item.isDirectory()) {
-          structure[item.name] = {
-            type: 'directory',
-            path: itemPath
-          };
+          structure[item.name] = { type: 'directory', path: itemPath };
+        } else if (item.isFile()) {
+          const ext = path.extname(item.name).toLowerCase();
+          if (allowedExtensions.includes(ext)) {
+            console.log(`[Main Process] Found allowed file: ${item.name}`); // LOG 3
+            structure[item.name] = { type: 'file', path: itemPath };
+          }
         }
       }
+      console.log(`[Main Process] Returning structure for ${dirPath}:`, JSON.stringify(structure, null, 2)); // LOG 4 (Critical: See the final structure)
       return structure;
+
     } catch (err) {
-      console.error('Error reading directory structure:', err);
-      return {};
+      console.error(`[Main Process] Error in readDirectoryStructure for ${dirPath}:`, err); // LOG 5
+      if (err.code === 'ENOENT') return { error: 'Directory not found' };
+      if (err.code === 'EACCES') return { error: 'Permission denied' };
+      return { error: err.message || 'Failed to read directory contents' };
     }
   });
+
 
   ipcMain.handle('goUpDirectory', async (_, currentPath) => {
     console.log('goUpDirectory called with:', currentPath);

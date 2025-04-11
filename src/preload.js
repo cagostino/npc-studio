@@ -20,7 +20,12 @@ contextBridge.exposeInMainWorld('api', {
     waitForScreenshot: (path) => ipcRenderer.invoke('wait-for-screenshot', path),
     saveNPC: (data) => ipcRenderer.invoke('save-npc', data),
 
-    // Command operations
+    // Add these to your window.api exposed functions
+    readFileContent: (filePath) => ipcRenderer.invoke('read-file-content', filePath),
+    writeFileContent: (filePath, content) => ipcRenderer.invoke('write-file-content', filePath, content),
+    deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
+
+// Command operations
     executeCommand: (data) => ipcRenderer.invoke('executeCommand', {
         commandstr: data.commandstr,
         current_path: data.currentPath,
@@ -89,7 +94,7 @@ contextBridge.exposeInMainWorld('api', {
         ipcRenderer.on('screenshot-captured', wrappedCallback);
         return () => ipcRenderer.removeListener('screenshot-captured', wrappedCallback);
     },
-
+    loadGlobalSettings: () => ipcRenderer.invoke('loadGlobalSettings'),
     getAvailableModels: (currentPath) => ipcRenderer.invoke('getAvailableModels', currentPath),
 
     // Shell operationss

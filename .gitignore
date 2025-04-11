@@ -159,6 +159,9 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+dist-electron/
+build/
+pyinstaller*
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

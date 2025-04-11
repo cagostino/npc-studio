@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, X, Save, FolderOpen, Eye, EyeOff } from 'lucide-react';
-
+//const HOME_DIR = process.env.HOME;
+const HOME_DIR = '/home/caug/.npcsh'
 const defaultSettings = {
     NPCSH_LICENSE_KEY: '',
     model: 'llama3.2',
     provider: 'ollama',
     embedding_model: 'nomic-text-embed',
     embedding_provider: 'ollama',
-    search_provider: 'google'
+    search_provider: 'google',
+    defaultFolder: HOME_DIR,
+    darkThemeColor: "#000000",
+    lightThemeColor: "#FFFFFF"
 };
 
 const SettingsMenu = ({ isOpen, onClose, currentPath, onPathChange }) => {
@@ -18,6 +22,8 @@ const SettingsMenu = ({ isOpen, onClose, currentPath, onPathChange }) => {
     const [customEnvVars, setCustomEnvVars] = useState([{ key: '', value: '' }]);
     const [placeholders, setPlaceholders] = useState(defaultSettings);
     const [visibleFields, setVisibleFields] = useState({});
+
+
 
     useEffect(() => {
         if (isOpen) {
@@ -43,6 +49,7 @@ const SettingsMenu = ({ isOpen, onClose, currentPath, onPathChange }) => {
             // Set the actual values and placeholders from global settings
             setPlaceholders(data.global_settings || defaultSettings);
             setGlobalSettings(data.global_settings || defaultSettings);
+            console.log(data);
 
             if (data.global_vars && Object.keys(data.global_vars).length > 0) {
                 setCustomGlobalVars(Object.entries(data.global_vars).map(([key, value]) => ({ key, value })));
@@ -51,6 +58,7 @@ const SettingsMenu = ({ isOpen, onClose, currentPath, onPathChange }) => {
             console.error('Error loading global settings:', err);
             setGlobalSettings(defaultSettings);
             setCustomGlobalVars([{ key: '', value: '' }]);
+
         }
     };
 
@@ -94,7 +102,8 @@ const SettingsMenu = ({ isOpen, onClose, currentPath, onPathChange }) => {
                 credentials: 'include',
                 body: JSON.stringify({
                     global_settings: globalSettings,
-                    global_vars: globalVars
+                    global_vars: globalVars,
+
                 })
             });
 
@@ -185,57 +194,68 @@ const SettingsMenu = ({ isOpen, onClose, currentPath, onPathChange }) => {
                         </div>
                     </div>
                 )}
-<div>
-    <label className="block text-sm text-gray-400 mb-1">Global Shortcut</label>
-    <div className="relative">
-        <input
-            type="text"
-            value={settings.shortcut || 'CommandOrControl+Space'}
-            onKeyDown={(e) => {
-                e.preventDefault();
-                const keys = [];
-                if (e.ctrlKey) keys.push('Control');
-                if (e.metaKey) keys.push('Command');
-                if (e.altKey) keys.push('Alt');
-                if (e.shiftKey) keys.push('Shift');
-                if (e.key !== 'Control' && e.key !== 'Meta' &&
-                    e.key !== 'Alt' && e.key !== 'Shift') {
-                    keys.push(e.key.toUpperCase());
-                }
-                if (keys.length > 0) {
-                    const shortcut = keys.join('+');
-                    setSettings({...settings, shortcut});
-                    window.electron.updateShortcut(shortcut);
-                }
-            }}
-            className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
-            placeholder="Press keys to set shortcut"
-        />
-    </div>
-</div>
+                    <div>
+                        <label className="block text-sm text-gray-400 mb-1">Global Shortcut</label>
+                        <div className="relative">
+                            <input
+                                type="text"
+                                value={settings.shortcut || 'CommandOrControl+Space'}
+                                onKeyDown={(e) => {
+                                    e.preventDefault();
+                                    const keys = [];
+                                    if (e.ctrlKey) keys.push('Control');
+                                    if (e.metaKey) keys.push('Command');
+                                    if (e.altKey) keys.push('Alt');
+                                    if (e.shiftKey) keys.push('Shift');
+                                    if (e.key !== 'Control' && e.key !== 'Meta' &&
+                                        e.key !== 'Alt' && e.key !== 'Shift') {
+                                        keys.push(e.key.toUpperCase());
+                                    }
+                                    if (keys.length > 0) {
+                                        const shortcut = keys.join('+');
+                                        setSettings({...settings, shortcut});
+                                        window.electron.updateShortcut(shortcut);
+                                    }
+                                }}
+                                className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
+                                placeholder="Press keys to set shortcut"
+                            />
+                        </div>
+                    </div>
 
-                <div>
-                    <label className="block text-sm text-gray-400 mb-1">Model</label>
-                    <input
-                        type="text"
-                        value={settings.model || ''}
-                        onChange={(e) => setSettings({...settings, model: e.target.value})}
-                        className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
-                        placeholder={type === 'global' ? placeholders.model : 'llama3.2'}
-                    />
-                </div>
-                <div>
-                    <label className="block text-sm text-gray-400 mb-1">Provider</label>
-                    <input
-                        type="text"
-                        value={settings.provider || ''}
-                        onChange={(e) => setSettings({...settings, provider: e.target.value})}
-                        className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
-                        placeholder={type === 'global' ? placeholders.provider : 'ollama'}
-                    />
-                </div>
                 {type === 'global' && (
                     <>
+                        <div>
+                            <label className="block text-sm text-gray-400 mb-1">Default Directory</label>
+                            <input
+                                type="text"
+                                value={settings.defaultFolder}
+                                onChange={(e) => setSettings({...settings, defaultFolder: e.target.value})}
+                                className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
+                                placeholder={type === 'global' ? placeholders.defaultFolder : HOME_DIR}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm text-gray-400 mb-1">Model</label>
+                            <input
+                                type="text"
+                                value={settings.model || ''}
+                                onChange={(e) => setSettings({...settings, model: e.target.value})}
+                                className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
+                                placeholder={type === 'global' ? placeholders.model : 'llama3.2'}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm text-gray-400 mb-1">Provider</label>
+                            <input
+                                type="text"
+                                value={settings.provider || ''}
+                                onChange={(e) => setSettings({...settings, provider: e.target.value})}
+                                className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
+                                placeholder={type === 'global' ? placeholders.provider : 'ollama'}
+                            />
+                        </div>
+
                         <div>
                             <label className="block text-sm text-gray-400 mb-1">Embedding Model</label>
                             <input
@@ -339,54 +359,56 @@ const SettingsMenu = ({ isOpen, onClose, currentPath, onPathChange }) => {
                 </div>
 
                 <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+
+
                     {activeTab === 'global' ? (
                         <>
                             {renderSettingsFields('global')}
                             <div className="mt-6">
                                 <h4 className="text-sm text-gray-400 mb-2">Custom Global Variables</h4>
                                 {customGlobalVars.map((variable, index) => (
-    <div key={index} className="flex gap-2 mb-2">
-        <input
-            type="text"
-            value={variable.key}
-            onChange={(e) => {
-                const newVars = [...customGlobalVars];
-                newVars[index].key = e.target.value;
-                setCustomGlobalVars(newVars);
-            }}
-            className="flex-1 bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
-            placeholder="Variable name"
-        />
-        <div className="flex-1 relative">
-            <input
-                type={visibleFields[`global_${index}`] || !isSensitiveField(variable.key) ? "text" : "password"}
-                value={variable.value}
-                onChange={(e) => {
-                    const newVars = [...customGlobalVars];
-                    newVars[index].value = e.target.value;
-                    setCustomGlobalVars(newVars);
-                }}
-                className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2 pr-10"
-                placeholder="Value"
-            />
-            {isSensitiveField(variable.key) && (
-                <button
-                    type="button"
-                    onClick={() => toggleFieldVisibility(`global_${index}`)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-                >
-                    {visibleFields[`global_${index}`] ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-            )}
-        </div>
-        <button
-            onClick={() => removeVariable('global', index)}
-            className="p-2 text-gray-400 hover:text-white"
-        >
-            <X size={20} />
-        </button>
-    </div>
-))}
+                                <div key={index} className="flex gap-2 mb-2">
+                                    <input
+                                        type="text"
+                                        value={variable.key}
+                                        onChange={(e) => {
+                                            const newVars = [...customGlobalVars];
+                                            newVars[index].key = e.target.value;
+                                            setCustomGlobalVars(newVars);
+                                        }}
+                                        className="flex-1 bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
+                                        placeholder="Variable name"
+                                    />
+                                    <div className="flex-1 relative">
+                                        <input
+                                            type={visibleFields[`global_${index}`] || !isSensitiveField(variable.key) ? "text" : "password"}
+                                            value={variable.value}
+                                            onChange={(e) => {
+                                                const newVars = [...customGlobalVars];
+                                                newVars[index].value = e.target.value;
+                                                setCustomGlobalVars(newVars);
+                                            }}
+                                            className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2 pr-10"
+                                            placeholder="Value"
+                                        />
+                                        {isSensitiveField(variable.key) && (
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleFieldVisibility(`global_${index}`)}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                                            >
+                                                {visibleFields[`global_${index}`] ? <EyeOff size={20} /> : <Eye size={20} />}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={() => removeVariable('global', index)}
+                                        className="p-2 text-gray-400 hover:text-white"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                            ))}
 
                                 <button
                                     onClick={() => addVariable('global')}
@@ -421,48 +443,48 @@ const SettingsMenu = ({ isOpen, onClose, currentPath, onPathChange }) => {
                             <div className="mt-6">
                                 <h4 className="text-sm text-gray-400 mb-2">Custom Environment Variables</h4>
                                 {customEnvVars.map((variable, index) => (
-    <div key={index} className="flex gap-2 mb-2">
-        <input
-            type="text"
-            value={variable.key}
-            onChange={(e) => {
-                const newVars = [...customEnvVars];
-                newVars[index].key = e.target.value;
-                setCustomEnvVars(newVars);
-            }}
-            className="flex-1 bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
-            placeholder="Variable name"
-        />
-        <div className="flex-1 relative">
-            <input
-                type={visibleFields[`env_${index}`] || !isSensitiveField(variable.key) ? "text" : "password"}
-                value={variable.value}
-                onChange={(e) => {
-                    const newVars = [...customEnvVars];
-                    newVars[index].value = e.target.value;
-                    setCustomEnvVars(newVars);
-                }}
-                className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2 pr-10"
-                placeholder="Value"
-            />
-            {isSensitiveField(variable.key) && (
-                <button
-                    type="button"
-                    onClick={() => toggleFieldVisibility(`env_${index}`)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-                >
-                    {visibleFields[`env_${index}`] ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-            )}
-        </div>
-        <button
-            onClick={() => removeVariable('env', index)}
-            className="p-2 text-gray-400 hover:text-white"
-        >
-            <X size={20} />
-        </button>
-    </div>
-))}
+                            <div key={index} className="flex gap-2 mb-2">
+                                <input
+                                    type="text"
+                                    value={variable.key}
+                                    onChange={(e) => {
+                                        const newVars = [...customEnvVars];
+                                        newVars[index].key = e.target.value;
+                                        setCustomEnvVars(newVars);
+                                    }}
+                                    className="flex-1 bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
+                                    placeholder="Variable name"
+                                />
+                                <div className="flex-1 relative">
+                                    <input
+                                        type={visibleFields[`env_${index}`] || !isSensitiveField(variable.key) ? "text" : "password"}
+                                        value={variable.value}
+                                        onChange={(e) => {
+                                            const newVars = [...customEnvVars];
+                                            newVars[index].value = e.target.value;
+                                            setCustomEnvVars(newVars);
+                                        }}
+                                        className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2 pr-10"
+                                        placeholder="Value"
+                                    />
+                                    {isSensitiveField(variable.key) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleFieldVisibility(`env_${index}`)}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                                        >
+                                            {visibleFields[`env_${index}`] ? <EyeOff size={20} /> : <Eye size={20} />}
+                                        </button>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => removeVariable('env', index)}
+                                    className="p-2 text-gray-400 hover:text-white"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        ))}
                                 <button
                                     onClick={() => addVariable('env')}
                                     className="w-full border border-gray-700 rounded py-2 hover:bg-[#1a2634]"
