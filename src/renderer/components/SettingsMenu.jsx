@@ -9,7 +9,7 @@ const defaultSettings = {
     embedding_model: 'nomic-text-embed',
     embedding_provider: 'ollama',
     search_provider: 'google',
-    defaultFolder: HOME_DIR,
+    default_folder: HOME_DIR,
     darkThemeColor: "#000000",
     lightThemeColor: "#FFFFFF"
 };
@@ -229,10 +229,10 @@ const SettingsMenu = ({ isOpen, onClose, currentPath, onPathChange }) => {
                             <label className="block text-sm text-gray-400 mb-1">Default Directory</label>
                             <input
                                 type="text"
-                                value={settings.defaultFolder}
-                                onChange={(e) => setSettings({...settings, defaultFolder: e.target.value})}
+                                value={settings.default_folder}
+                                onChange={(e) => setSettings({...settings, default_folder: e.target.value})}
                                 className="w-full bg-[#1a2634] border border-gray-700 rounded px-3 py-2"
-                                placeholder={type === 'global' ? placeholders.defaultFolder : HOME_DIR}
+                                placeholder={type === 'global' ? placeholders.default_folder : HOME_DIR}
                             />
                         </div>
                         <div>
