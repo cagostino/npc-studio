@@ -6,7 +6,6 @@ import {
     ChevronRight,
     Settings,
     Edit,
-    Edit,
     Terminal,
     Image,
     Trash,
@@ -14,7 +13,6 @@ import {
     Plus,
     ArrowUp,
     Camera,
-    MessageSquare,
     MessageSquare,
     ListFilter,
     X,
@@ -1163,86 +1161,37 @@ const ChatInterface = () => {
     return (
         <div className={`chat-container ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
 
+            {/* Main Flex Container for Sidebar + Content */}
             <div className="flex h-screen bg-gray-900 text-gray-100 font-mono">
 
-                {/* Sidebar */}
-                <div className="w-64 border-r border-gray-700 flex flex-col">
-                    {/* Header with New Conversation button */}
+                {/* Sidebar (Fixed Width) */}
+                <div className="w-64 border-r border-gray-700 flex flex-col flex-shrink-0"> {/* Added flex-shrink-0 */}
+                    {/* Header */}
                     <div className="p-4 border-b border-gray-700 flex items-center justify-between">
                         <span className="text-sm font-semibold">NPC Studio</span>
                         <div className="flex gap-3">
-                            <button
-                                onClick={() => setSettingsOpen(true)}
-                                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-full transition-all"
-                                aria-label="Settings"
-                            >
-                                <Settings size={14} />
-                            </button>
-                            <button
-                                onClick={deleteSelectedConversations}
-                                className="p-2 hover:bg-gray-800 rounded-full transition-all"
-                                aria-label="Delete Selected Conversations"
-                            >
-                                <Trash size={14} />
-                            </button>
-                            <button
-                                onClick={createNewConversation}
-                                className="p-2 bg-blue-600 hover:bg-blue-500 rounded-full transition-all"
-                                aria-label="New Conversation"
-                            >
-                                <Plus size={18} />
-                            </button>
-                            <button className="theme-toggle-btn" onClick={toggleTheme}>
-                                {isDarkMode ? '🌙' : '☀️'}
-                            </button>
+                            <button onClick={() => setSettingsOpen(true)} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-full transition-all" aria-label="Settings"><Settings size={14} /></button>
+                            <button onClick={deleteSelectedConversations} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Delete Selected Conversations"><Trash size={14} /></button>
+                            <button onClick={createNewConversation} className="p-2 bg-blue-600 hover:bg-blue-500 rounded-full transition-all" aria-label="New Conversation"><Plus size={18} /></button>
+                            <button className="theme-toggle-btn" onClick={toggleTheme}>{isDarkMode ? '🌙' : '☀️'}</button>
                         </div>
                     </div>
 
                     {/* Current Path */}
                     <div className="p-2 border-b border-gray-700 flex items-center gap-2">
-                        <button
-                            onClick={goUpDirectory}
-                            className="p-2 hover:bg-gray-800 rounded-full transition-all"
-                            title="Go Up"
-                            aria-label="Go Up Directory"
-                        >
-                            <ArrowUp
-                                size={14}
-                                className={(!currentPath || currentPath === baseDir) ? "text-gray-600" : "text-gray-300"}
-                            />
+                        <button onClick={goUpDirectory} className="p-2 hover:bg-gray-800 rounded-full transition-all" title="Go Up" aria-label="Go Up Directory">
+                            <ArrowUp size={14} className={(!currentPath || currentPath === baseDir) ? "text-gray-600" : "text-gray-300"}/>
                         </button>
                         {isEditingPath ? (
-                            <input
-                                type="text"
-                                value={editedPath}
-                                onChange={(e) => setEditedPath(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        setIsEditingPath(false);
-                                        setCurrentPath(editedPath);
-                                        loadDirectoryStructure(editedPath);
-                                    } else if (e.key === 'Escape') {
-                                        setIsEditingPath(false);
-                                    }
-                                }}
-                                onBlur={() => setIsEditingPath(false)}
-                                autoFocus
-                                className="text-xs text-gray-400 bg-gray-800 border border-gray-700 rounded px-2 py-1 flex-1"
-                            />
+                            <input type="text" value={editedPath} onChange={(e) => setEditedPath(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { setIsEditingPath(false); setCurrentPath(editedPath); loadDirectoryStructure(editedPath); } else if (e.key === 'Escape') { setIsEditingPath(false); } }} onBlur={() => setIsEditingPath(false)} autoFocus className="text-xs text-gray-400 bg-gray-800 border border-gray-700 rounded px-2 py-1 flex-1"/>
                         ) : (
-                            <div
-                                onClick={() => {
-                                    setIsEditingPath(true);
-                                    setEditedPath(currentPath);
-                                }}
-                                className="text-xs text-gray-400 overflow-hidden overflow-ellipsis whitespace-nowrap cursor-pointer hover:bg-gray-800 px-2 py-1 rounded"
-                            >
+                            <div onClick={() => { setIsEditingPath(true); setEditedPath(currentPath); }} className="text-xs text-gray-400 overflow-hidden overflow-ellipsis whitespace-nowrap cursor-pointer hover:bg-gray-800 px-2 py-1 rounded">
                                 {currentPath}
                             </div>
                         )}
                     </div>
 
-                    {/* Folder/Conversation List */}
+                    {/* Folder/Conversation List (Scrollable) */}
                     <div className="flex-1 overflow-y-auto">
                         {loading ? (
                             <div className="p-4 text-gray-500">Loading...</div>
@@ -1251,45 +1200,16 @@ const ChatInterface = () => {
                                 {renderFolderStructure(folderStructure)}
                                 {directoryConversations?.length > 0 && (
                                     <div className="mt-4">
-                                        <div className="px-4 py-2 text-xs text-gray-500">
-                                            Conversations ({directoryConversations.length})
-                                        </div>
+                                        <div className="px-4 py-2 text-xs text-gray-500">Conversations ({directoryConversations.length})</div>
                                         <div>
                                             {directoryConversations.map((conv) => {
                                                 const isSelected = selectedConvos?.has(conv.id);
                                                 return (
-                                                    <button
-                                                        key={conv.id}
-                                                        onClick={(e) => {
-                                                            if (e.ctrlKey || e.metaKey) {
-                                                                const newSelected = new Set(selectedConvos || new Set());
-                                                                if (newSelected.has(conv.id)) {
-                                                                    newSelected.delete(conv.id);
-                                                                } else {
-                                                                    newSelected.add(conv.id);
-                                                                }
-                                                                setSelectedConvos(newSelected);
-                                                            } else {
-                                                                setSelectedConvos(new Set([conv.id]));
-                                                                handleConversationSelect(conv.id);
-                                                            }
-                                                        }}
-                                                        onContextMenu={(e) => {
-                                                            e.preventDefault();
-                                                            if (!selectedConvos?.has(conv.id)) {
-                                                                setSelectedConvos(new Set([conv.id]));
-                                                            }
-                                                            setContextMenuPos({ x: e.clientX, y: e.clientY });
-                                                        }}
-                                                        className={`flex items-center gap-2 px-4 py-2 w-full hover:bg-gray-800 text-left rounded-lg transition-all ${isSelected ? 'bg-gray-700' : ''
-                                                            } ${activeConversationId === conv.id ? 'border-l-2 border-blue-500' : ''}`}
-                                                    >
+                                                    <button key={conv.id} onClick={(e) => { if (e.ctrlKey || e.metaKey) { const newSelected = new Set(selectedConvos || new Set()); if (newSelected.has(conv.id)) { newSelected.delete(conv.id); } else { newSelected.add(conv.id); } setSelectedConvos(newSelected); } else { setSelectedConvos(new Set([conv.id])); handleConversationSelect(conv.id); } }} onContextMenu={(e) => { e.preventDefault(); if (!selectedConvos?.has(conv.id)) { setSelectedConvos(new Set([conv.id])); } setContextMenuPos({ x: e.clientX, y: e.clientY }); }} className={`flex items-center gap-2 px-4 py-2 w-full hover:bg-gray-800 text-left rounded-lg transition-all ${isSelected ? 'bg-gray-700' : ''} ${activeConversationId === conv.id ? 'border-l-2 border-blue-500' : ''}`}>
                                                         <File size={16} className="text-gray-400" />
                                                         <div className="flex flex-col">
                                                             <span className="text-sm truncate">{conv.title || conv.id}</span>
-                                                            <span className="text-xs text-gray-500">
-                                                                {new Date(conv.timestamp).toLocaleString()}
-                                                            </span>
+                                                            <span className="text-xs text-gray-500">{new Date(conv.timestamp).toLocaleString()}</span>
                                                         </div>
                                                     </button>
                                                 );
@@ -1303,148 +1223,81 @@ const ChatInterface = () => {
                     </div>
 
                     {/* Sidebar Footer */}
-                    <div className="p-4 border-t border-gray-700">
+                    <div className="p-4 border-t border-gray-700 flex-shrink-0"> {/* Added flex-shrink-0 */}
                         <div className="flex gap-2 justify-center">
-                            <button
-                                onClick={handleImagesClick}
-                                className="p-2 hover:bg-gray-800 rounded-full transition-all"
-                                aria-label="View Images"
-                            >
-                                <Image size={16} />
-                            </button>
-                            <button
-                                onClick={handleScreenshotsClick}
-                                className="p-2 hover:bg-gray-800 rounded-full transition-all"
-                                aria-label="View Screenshots"
-                            >
-                                <Camera size={16} />
-                            </button>
-                            <button
-                                onClick={() => setToolMenuOpen(true)}
-                                className="p-2 hover:bg-gray-800 rounded-full transition-all"
-                                aria-label="Open Tool Menu"
-                            >
-                                <Wrench size={16} />
-                            </button>
-                            <button
-                                onClick={handleOpenNpcTeamMenu}
-                                className="p-2 hover:bg-gray-800 rounded-full transition-all"
-                                aria-label="Open NPC Team Menu"
-                            >
-                                <Users size={16} />
-                            </button>
+                            <button onClick={handleImagesClick} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="View Images"><Image size={16} /></button>
+                            <button onClick={handleScreenshotsClick} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="View Screenshots"><Camera size={16} /></button>
+                            <button onClick={() => setToolMenuOpen(true)} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Open Tool Menu"><Wrench size={16} /></button>
+                            <button onClick={handleOpenNpcTeamMenu} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Open NPC Team Menu"><Users size={16} /></button>
                         </div>
                     </div>
                 </div>
 
-                {/* Main Content Area: Conditional Rendering */}
-                <div className={`flex-1 flex flex-col ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
+                {/* Main Content Area (Takes remaining space) */}
+                <div className={`flex-1 flex flex-col ${isDarkMode ? 'dark-mode' : 'light-mode'} overflow-hidden`}> {/* Added overflow-hidden */}
                     {isEditing && currentFile ? (
-                        // --- File Editing View ---
+                        /* --- File Editing View --- */
                         <div className="flex-1 flex flex-col">
-                            <div className="p-2 border-b border-gray-700 flex items-center justify-between">
+                             <div className="p-2 border-b border-gray-700 flex items-center justify-between flex-shrink-0"> {/* Added flex-shrink-0 */}
                                 <div className="text-sm text-gray-300">{currentFile}</div>
                                 <div className="flex gap-2">
-                                    <button
-                                        onClick={handleFileSave}
-                                        disabled={!fileChanged}
-                                        className="px-3 py-1 bg-green-600 hover:bg-green-500 rounded text-sm disabled:opacity-50"
-                                    >
-                                        Save
-                                    </button>
-                                    <button
-                                        onClick={() => setIsEditing(false)}
-                                        className="px-3 py-1 bg-gray-600 hover:bg-gray-500 rounded text-sm"
-                                    >
-                                        Close
-                                    </button>
+                                    <button onClick={handleFileSave} disabled={!fileChanged} className="px-3 py-1 bg-green-600 hover:bg-green-500 rounded text-sm disabled:opacity-50">Save</button>
+                                    <button onClick={() => setIsEditing(false)} className="px-3 py-1 bg-gray-600 hover:bg-gray-500 rounded text-sm">Close</button>
                                 </div>
                             </div>
                             <div className="flex-1 overflow-y-auto">
-                                <textarea
-                                    value={fileContent}
-                                    onChange={(e) => handleFileContentChange(e.target.value)}
-                                    className="w-full h-full bg-gray-900 text-gray-200 p-4 font-mono text-sm resize-none focus:outline-none"
-                                />
+                                <textarea value={fileContent} onChange={(e) => handleFileContentChange(e.target.value)} className="w-full h-full bg-gray-900 text-gray-200 p-4 font-mono text-sm resize-none focus:outline-none"/>
                             </div>
                         </div>
                     ) : (
-                        // --- Original Chat View (as provided initially) ---
-                        <div className="flex-1 flex flex-col p-4"> {/* This is the original container from your first snippet */}
+                        /* --- Chat View --- */
+                         /* Removed outer p-4, added bg */
+                        <div className="flex-1 flex flex-col bg-gray-900">
                             {loading && !messages.length ? (
-                                <div className="flex items-center justify-center h-full text-gray-500">
-                                    <span>Loading...</span>
-                                </div>
+                                 <div className="flex items-center justify-center h-full text-gray-500"><span>Loading...</span></div>
                             ) : (
                                 <>
                                     {/* Debug info */}
-                                    <div className="p-2 border-b border-gray-700 text-xs text-gray-500">
-                                        <div>Active Conversation: {activeConversationId || createNewConversation().id}</div>
+                                    <div className="p-2 border-b border-gray-700 text-xs text-gray-500 flex-shrink-0"> {/* Added flex-shrink-0 */}
+                                        <div>Active Conversation: {activeConversationId || 'None'}</div> {/* Avoid calling createNew... here */}
                                         <div>Messages Count: {messages.length}</div>
                                         <div>Current Path: {currentPath}</div>
                                     </div>
 
-                                    {/* Messages Area */}
-                                    <div className="flex-1 overflow-y-auto space-y-4">
+                                    {/* Messages Area (Scrollable) */}
+                                    <div className="flex-1 overflow-y-auto space-y-4 p-4"> {/* Added p-4 here */}
                                         {promptModal.isOpen && (
-                                            <div className="bg-gray-800 p-4 border border-gray-700 rounded-lg mb-4">
+                                             <div className="bg-gray-800 p-4 border border-gray-700 rounded-lg mb-4">
                                                 <h3 className="text-lg font-medium mb-2">{promptModal.title}</h3>
                                                 <p className="text-gray-400 mb-4">{promptModal.message}</p>
-                                                <textarea
-                                                    className="w-full h-48 bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-gray-100 font-mono"
-                                                    defaultValue={promptModal.defaultValue}
-                                                    id="promptInput"
-                                                    autoFocus
-                                                />
+                                                <textarea className="w-full h-48 bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-gray-100 font-mono" defaultValue={promptModal.defaultValue} id="promptInput" autoFocus/>
                                                 <div className="flex justify-end gap-2">
-                                                    <button
-                                                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
-                                                        onClick={() => setPromptModal({ ...promptModal, isOpen: false })}
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button
-                                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
-                                                        onClick={() => {
-                                                            const value = document.getElementById('promptInput').value;
-                                                            promptModal.onConfirm?.(value);
-                                                            setPromptModal({ ...promptModal, isOpen: false });
-                                                        }}
-                                                    >
-                                                        OK
-                                                    </button>
+                                                    <button className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm" onClick={() => setPromptModal({ ...promptModal, isOpen: false })}>Cancel</button>
+                                                    <button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm" onClick={() => { const value = document.getElementById('promptInput').value; promptModal.onConfirm?.(value); setPromptModal({ ...promptModal, isOpen: false }); }}>OK</button>
                                                 </div>
                                             </div>
                                         )}
                                         {activeConversationId ? (
                                             messages.length > 0 ? (
                                                 messages.map((message, index) => (
-                                                    <div key={index} className={`space-y-1 ${message.role === 'user' ? 'ml-auto' : ''}`}>
+                                                    <div key={index} className={`space-y-1 ${message.role === 'user' ? 'ml-auto max-w-[85%]' : 'max-w-[85%]'}`}> {/* Adjusted max-width */}
                                                         <div className="flex items-center gap-2">
-                                                            <div className="text-xs text-gray-500">
+                                                             <div className="text-xs text-gray-500">
                                                                 {message.role === 'user' ? '$ ' : '> '}
                                                                 {message.timestamp && new Date(message.timestamp).toLocaleTimeString()}
-                                                                <div>
-                                                                    {message.model} - {message.npc}
-                                                                </div>
+                                                                <div>{message.model} - {message.npc}</div>
                                                             </div>
                                                         </div>
-                                                        <div className={`p-2 rounded-lg ${message.role === 'user' ? 'bg-blue-900 text-white' : 'bg-gray-800'}`}>
-                                                            <div className="whitespace-pre-wrap font-mono text-sm overflow-x-auto">
+                                                        <div className={`p-3 rounded-lg inline-block ${message.role === 'user' ? 'bg-blue-900 text-white' : 'bg-gray-800'}`}> {/* Adjusted padding */}
+                                                            <div className="whitespace-pre-wrap font-mono text-sm break-words"> {/* Added break-words */}
                                                                 <div dangerouslySetInnerHTML={{ __html: message.content }} />
                                                             </div>
                                                             {message.attachments && message.attachments.length > 0 && (
                                                                 <div className="mt-2 flex flex-wrap gap-2">
                                                                     {message.attachments.map((attachment, index) => (
-                                                                        <div key={index} className="text-xs bg-gray-800 rounded px-2 py-1">
+                                                                        <div key={index} className="text-xs bg-gray-700 rounded px-2 py-1"> {/* Changed bg */}
                                                                             📎 {attachment.name}
-                                                                            {attachment.data && (
-                                                                                <img
-                                                                                    src={attachment.data}
-                                                                                    alt={attachment.name}
-                                                                                    className="mt-2 max-w-[200px] max-h-[200px] rounded-md"
-                                                                                />
-                                                                            )}
+                                                                            {attachment.data && (<img src={attachment.data} alt={attachment.name} className="mt-2 max-w-[200px] max-h-[200px] rounded-md"/> )}
                                                                         </div>
                                                                     ))}
                                                                 </div>
@@ -1452,123 +1305,49 @@ const ChatInterface = () => {
                                                         </div>
                                                     </div>
                                                 ))
-                                            ) : (
-                                                <div className="text-center text-gray-500">No messages in this conversation</div>
-                                            )
-                                        ) : (
-                                            <div className="flex items-center justify-center h-full text-gray-500">
-                                                Select a conversation to view messages
-                                            </div>
-                                        )}
+                                            ) : (<div className="text-center text-gray-500 pt-10">No messages in this conversation</div>)
+                                        ) : (<div className="flex items-center justify-center h-full text-gray-500">Select a conversation</div>)
+                                        }
                                     </div>
 
-                                    {/* Message Input Container (Original structure) */}
-                                    <div className="message-input-container">
-                                        <div className="fixed bottom-0 left-64 right-0 p-6 bg-gray-900">
-                                            <div className="max-w-5xl mx-auto">
-                                                <div
-                                                    className="relative border-2 border-dashed border-gray-600 rounded-lg hover:border-blue-500 transition-all"
-                                                    onDragOver={(e) => e.preventDefault()}
-                                                    onDrop={(e) => {
-                                                        handleDrop(e);
-                                                        setIsHovering(false);
-                                                    }}
-                                                    onDragEnter={() => setIsHovering(true)}
-                                                    onDragLeave={() => setIsHovering(false)}
-                                                >
-                                                    <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center text-gray-400 ${isHovering ? 'block' : 'hidden'}`}>
-                                                        Drop your files here
+                                    {/* Message Input Container (Now part of the flex column) */}
+                                    {/* Removed fixed positioning wrapper */}
+                                    <div className="message-input-container p-4 border-t border-gray-700 bg-gray-900 flex-shrink-0"> {/* Added border/bg, padding, flex-shrink */}
+                                        <div className="max-w-5xl mx-auto">
+                                            <div className="relative border-2 border-dashed border-gray-600 rounded-lg hover:border-blue-500 transition-all" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { handleDrop(e); setIsHovering(false); }} onDragEnter={() => setIsHovering(true)} onDragLeave={() => setIsHovering(false)}>
+                                                <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center text-gray-400 ${isHovering ? 'block' : 'hidden'}`}>Drop your files here</div>
+                                                <form onSubmit={handleInputSubmit} className="relative">
+                                                    <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleInputSubmit(e); } }} placeholder="Type a message..." className="w-full bg-[#0b0c0f] text-sm text-gray-300 rounded-lg px-4 py-3 pr-16 placeholder-gray-600 focus:outline-none border-0 min-h-[56px] resize-none" rows={1}/>
+                                                    <input type="file" onChange={handleFileInput} style={{ display: 'none' }} multiple accept="image/*"/>
+                                                    <button type="submit" disabled={!input.trim() && uploadedFiles.length === 0} className="absolute right-3 bottom-2.5 bg-green-600 hover:bg-green-500 text-white rounded px-3 py-1.5 text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">Send</button>
+                                                     {/* Selectors now inside the form or near it */}
+                                                    <div className="flex items-center gap-2 pt-2 mb-2"> {/* Added pt-2 */}
+                                                        <select value={currentModel || ''} onChange={e => setCurrentModel(e.target.value)} className="bg-gray-800 text-xs rounded px-2 py-1 border border-gray-700" disabled={modelsLoading || !!modelsError}>
+                                                            {modelsLoading && <option value="">Loading...</option>}
+                                                            {modelsError && <option value="">Error</option>}
+                                                            {!modelsLoading && !modelsError && availableModels.length === 0 && (<option value="">No models</option> )}
+                                                            {!modelsLoading && !modelsError && availableModels.map(model => (<option key={model.value} value={model.value}>{model.display_name}</option>))}
+                                                        </select>
+                                                        <select value={currentNPC || config?.npc || 'sibiji'} onChange={e => setCurrentNPC(e.target.value)} className="bg-gray-800 text-xs rounded px-2 py-1 border border-gray-700">
+                                                            <option value="sibiji">NPC: sibiji </option>
+                                                        </select>
                                                     </div>
-                                                    <form onSubmit={handleInputSubmit} className="relative">
-                                                        <textarea
-                                                            value={input}
-                                                            onChange={(e) => setInput(e.target.value)}
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter' && !e.shiftKey) {
-                                                                    e.preventDefault();
-                                                                    handleInputSubmit(e);
-                                                                }
-                                                            }}
-                                                            placeholder="Type a message..."
-                                                            className="w-full bg-[#0b0c0f] text-sm text-gray-300 rounded-lg px-4 py-3
-                                                                         placeholder-gray-600 focus:outline-none border-0
-                                                                         min-h-[56px] resize-none"
-                                                            rows={1}
-                                                        />
-                                                        <input
-                                                            type="file"
-                                                            onChange={handleFileInput}
-                                                            style={{ display: 'none' }} // Still hidden, relies on handleDrop or other triggers
-                                                            multiple
-                                                            accept="image/*"
-                                                        />
-                                                        <button
-                                                            type="submit"
-                                                            disabled={!input.trim() && uploadedFiles.length === 0}
-                                                            className="absolute right-3 bottom-2.5 bg-green-600 hover:bg-green-500
-                                                                     text-white rounded px-3 py-1.5 text-sm flex items-center gap-2
-                                                                     disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        >
-                                                            Send
-                                                        </button>
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <select
-                                                                value={currentModel || ''}
-                                                                onChange={e => setCurrentModel(e.target.value)}
-                                                                className="bg-gray-800 text-sm rounded px-2 py-1 border border-gray-700"
-                                                                disabled={modelsLoading || !!modelsError}
-                                                            >
-                                                                {modelsLoading && <option value="">Loading models...</option>}
-                                                                {modelsError && <option value="">Error loading models</option>}
-                                                                {!modelsLoading && !modelsError && availableModels.length === 0 && (
-                                                                    <option value="">No models available</option>
-                                                                )}
-                                                                {!modelsLoading && !modelsError && availableModels.map(model => (
-                                                                    <option key={model.value} value={model.value}>
-                                                                        {model.display_name}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                            <select
-                                                                value={currentNPC || config?.npc || 'sibiji'}
-                                                                onChange={e => setCurrentNPC(e.target.value)}
-                                                                className="bg-gray-800 text-sm rounded px-2 py-1 border border-gray-700"
-                                                            >
-                                                                <option value="sibiji">NPC: sibiji </option>
-                                                            </select>
-                                                        </div>
-                                                    </form>
-                                                    {uploadedFiles.length > 0 && (
-                                                        <div className="p-2 flex gap-2 flex-wrap">
-                                                            {uploadedFiles.map(file => (
-                                                                <div key={file.id} className="relative">
-                                                                    <img
-                                                                        src={`file://${file.path}`}
-                                                                        alt="Screenshot"
-                                                                        className="w-24 h-24 object-cover rounded-lg border border-gray-700"
-                                                                    />
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setUploadedFiles(prev => prev.filter(f => f.id !== file.id));
-                                                                        }}
-                                                                        className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"
-                                                                    >
-                                                                        <X size={12} />
-                                                                    </button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                    {imagePreview && (
-                                                        <div className="p-2">
-                                                            <img
-                                                                src={imagePreview}
-                                                                alt="Dropped Image"
-                                                                className="w-16 h-16 object-cover rounded-lg border border-gray-600"
-                                                            />
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                </form>
+                                                {uploadedFiles.length > 0 && (
+                                                    <div className="p-2 flex gap-2 flex-wrap border-t border-gray-700 mt-2"> {/* Added border-t, mt-2 */}
+                                                        {uploadedFiles.map(file => (
+                                                            <div key={file.id} className="relative">
+                                                                <img src={`file://${file.path}`} alt="Screenshot" className="w-16 h-16 object-cover rounded-lg border border-gray-700"/> {/* Adjusted size */}
+                                                                <button onClick={() => { setUploadedFiles(prev => prev.filter(f => f.id !== file.id)); }} className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1"><X size={12} /></button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {imagePreview && (
+                                                    <div className="p-2 border-t border-gray-700 mt-2"> {/* Added border-t, mt-2 */}
+                                                        <img src={imagePreview} alt="Dropped Image" className="w-16 h-16 object-cover rounded-lg border border-gray-600"/>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -1577,66 +1356,19 @@ const ChatInterface = () => {
                         </div>
                     )}
 
-                    {/* Modals outside the conditional part */}
-                    <NPCTeamMenu
-                        isOpen={npcTeamMenuOpen}
-                        onClose={handleCloseNpcTeamMenu}
-                        currentPath={currentPath}
-                        startNewConversation={startNewConversationWithNpc}
-                    />
-                    <ToolMenu
-                        isOpen={toolMenuOpen}
-                        onClose={() => setToolMenuOpen(false)}
-                        currentPath={currentPath}
-                    />
-                    <SettingsMenu
-                        isOpen={settingsOpen}
-                        onClose={() => setSettingsOpen(false)}
-                        currentPath={currentPath}
-                        onPathChange={(newPath) => {
-                            setCurrentPath(newPath);
-                        }}
-                    />
-                    {isMacroInputOpen && (
-                        <MacroInput
-                            isOpen={isMacroInputOpen}
-                            currentPath={currentPath}
-                            onClose={() => {
-                                setIsMacroInputOpen(false);
-                                window.api?.hideMacro?.();
-                            }}
-                            onSubmit={({ macro, conversationId, result }) => {
-                                setActiveConversationId(conversationId);
-                                setCurrentConversation({
-                                    id: conversationId,
-                                    title: macro.trim().slice(0, 50)
-                                });
-                                if (!result) {
-                                    setMessages([
-                                        { role: 'user', content: macro, timestamp: new Date().toISOString(), type: 'command' },
-                                        { role: 'assistant', content: 'Processing...', timestamp: new Date().toISOString(), type: 'message' }
-                                    ]);
-                                } else {
-                                    setMessages([
-                                        { role: 'user', content: macro, timestamp: new Date().toISOString(), type: 'command' },
-                                        { role: 'assistant', content: result?.output || 'No response', timestamp: new Date().toISOString(), type: 'message' }
-                                    ]);
-                                }
-                                refreshConversations();
-                            }}
-                        />
-                    )}
+                    {/* Modals (remain outside main flow) */}
+                    <NPCTeamMenu isOpen={npcTeamMenuOpen} onClose={handleCloseNpcTeamMenu} currentPath={currentPath} startNewConversation={startNewConversationWithNpc}/>
+                    <ToolMenu isOpen={toolMenuOpen} onClose={() => setToolMenuOpen(false)} currentPath={currentPath}/>
+                    <SettingsMenu isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} currentPath={currentPath} onPathChange={(newPath) => { setCurrentPath(newPath); }}/>
+                    {isMacroInputOpen && (<MacroInput isOpen={isMacroInputOpen} currentPath={currentPath} onClose={() => { setIsMacroInputOpen(false); window.api?.hideMacro?.(); }} onSubmit={({ macro, conversationId, result }) => { setActiveConversationId(conversationId); setCurrentConversation({ id: conversationId, title: macro.trim().slice(0, 50) }); if (!result) { setMessages([{ role: 'user', content: macro, timestamp: new Date().toISOString(), type: 'command' }, { role: 'assistant', content: 'Processing...', timestamp: new Date().toISOString(), type: 'message' }]); } else { setMessages([{ role: 'user', content: macro, timestamp: new Date().toISOString(), type: 'command' }, { role: 'assistant', content: result?.output || 'No response', timestamp: new Date().toISOString(), type: 'message' }]); } refreshConversations(); }}/> )}
                 </div>
             </div>
 
             {/* Photo Viewer Modal */}
-            <PhotoViewer
-                isOpen={photoViewerOpen}
-                onClose={() => setPhotoViewerOpen(false)}
-                type={photoViewerType}
-            />
+            <PhotoViewer isOpen={photoViewerOpen} onClose={() => setPhotoViewerOpen(false)} type={photoViewerType}/>
         </div>
     );
+
 
 };
 
