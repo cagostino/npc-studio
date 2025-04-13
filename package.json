@@ -5,6 +5,7 @@
   "author": "Chris Agostino <info@npcworldwi.de>",
   "main": "src/main.js",
   "scripts": {
+    "generate-icons": "electron-icon-builder --input=./assets/icon.png --output=./build",
     "start": "electron .",
     "dev": "vite",
     "build": "electron-builder",
@@ -27,23 +28,30 @@
       "buildResources": "assets",
       "output": "dist-electron"
     },
+    "win": {
+      "icon": "assets/icon.png"
+    },
+    "mac": {
+      "icon": "assets/icon.png"
+    },
     "linux": {
       "target": [
         "deb",
         "AppImage"
       ],
       "category": "Utility",
-      "icon": "assets/icon.png"
+      "icon": "build/icons"
     },
     "extraResources": [
       {
         "from": "resources/backend/",
         "to": "resources/backend/",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ]
-
-    },
+  },
   "dependencies": {
     "@headlessui/react": "^2.2.0",
     "@supabase/supabase-js": "^2.47.15",
@@ -57,6 +65,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.3",
+    "remark-gfm": "^4.0.1",
     "sqlite3": "^5.0.2"
   },
   "devDependencies": {
@@ -64,6 +73,7 @@
     "autoprefixer": "^10.4.20",
     "electron": "^25.9.8",
     "electron-builder": "^24.13.1",
+    "electron-icon-builder": "^2.0.1",
     "electron-rebuild": "^3.2.9",
     "eslint": "^9.18.0",
     "eslint-plugin-react": "^7.37.4",

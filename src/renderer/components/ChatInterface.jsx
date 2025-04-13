@@ -82,11 +82,27 @@ const ChatInterface = () => {
     const [macroText, setMacroText] = useState('');
     const [baseDir, setBaseDir] = useState('');
     const [promptModal, setPromptModal] = useState({ isOpen: false, title: '', message: '', defaultValue: '', onConfirm: null });
-    const [directoryConversations, setDirectoryConversations] = useState([]);
     const screenshotHandlingRef = useRef(false);
     const fileInputRef = useRef(null);
     const listenersAttached = useRef(false);
     const initialLoadComplete = useRef(false);
+    const [directoryConversations, setDirectoryConversations] = useState([]);
+
+    const directoryConversationsRef = useRef(directoryConversations);
+    useEffect(() => {
+        directoryConversationsRef.current = directoryConversations;
+    }, [directoryConversations]);
+
+    useEffect(() => {
+        activeConversationRef.current = activeConversationId;
+    }, [activeConversationId]);
+
+    useEffect(() => {
+        document.body.classList.toggle('dark-mode', isDarkMode);
+        document.body.classList.toggle('light-mode', !isDarkMode);
+    }, [isDarkMode]);
+
+
 
     const handleFileClick = async (filePath) => {
         try {
@@ -122,13 +138,95 @@ const ChatInterface = () => {
     };
 
     useEffect(() => {
-        activeConversationRef.current = activeConversationId;
-    }, [activeConversationId]);
+        const loadData = async () => {
+            if (currentPath) {
+                setLoading(true);
+                await loadDirectoryStructure(currentPath); // Includes loadConversations -> setDirectoryConversations
+                setLoading(false); // Loading done for this path
 
-    useEffect(() => {
-        document.body.classList.toggle('dark-mode', isDarkMode);
-        document.body.classList.toggle('light-mode', !isDarkMode);
-    }, [isDarkMode]);
+                const currentConvos = directoryConversationsRef.current;
+
+                if (!activeConversationId) { // Only act if NO conversation is currently active
+                    const needsNewConvo = currentConvos.length === 0;
+                    const needsSelectConvo = currentConvos.length > 0;
+
+                     //console.log(`Post-Load Decision: needsNew=${needsNewConvo}, needsSelect=${needsSelectConvo}, activeId=${activeConversationId}, convoCount=${currentConvos.length}`);
+
+                    if (needsNewConvo) {
+                        //console.log("No active convo, none loaded: Creating new conversation.");
+                        // No await needed if createNewConversation doesn't need to block anything *here*
+                        createNewConversation();
+                    } else if (needsSelectConvo) {
+                        //console.log(`No active convo, selecting first loaded: ${currentConvos[0].id}`);
+                        // No await needed if handleConversationSelect doesn't need to block anything *here*
+                        handleConversationSelect(currentConvos[0].id);
+                    }
+                } else {
+                    //  console.log(`Post-Load: Conversation ${activeConversationId} is already active.`);
+                }
+            }
+        };
+
+        loadData();
+    }, [currentPath]);
+
+
+
+    const handleConversationSelect = async (conversationId) => {
+        try {
+          setIsEditing(false);
+          setCurrentFile(null);
+          //console.log('Selecting conversation:', conversationId);
+          setActiveConversationId(conversationId);
+          //console.log('Active conversation ID set to:', conversationId);
+
+          const selectedConv = directoryConversations.find(conv => conv.id === conversationId);
+          //console.log('Found conversation object:', selectedConv);
+          if (selectedConv) {
+            setCurrentConversation(selectedConv);
+          } else {
+             setCurrentConversation(null);
+          }
+
+          setMessages([]); // Clear messages initially
+
+          //console.log('Fetching messages for conversation:', conversationId);
+          const response = await window.api.getConversationMessages(conversationId);
+          //console.log('Raw message response from API:', response);
+
+          // Check if the response *itself* is the array of messages
+          if (response && Array.isArray(response)) {
+             const formattedMessages = response.map(msg => ({
+                role: msg.role || 'assistant',
+                content: msg.content || '',
+                timestamp: msg.timestamp || new Date().toISOString(),
+                type: msg.content?.startsWith('/') ? 'command' : 'message',
+                model: msg.model,
+                npc: msg.npc,
+                attachments: msg.attachment_data ? [{
+                  name: msg.attachment_name,
+                  data: `data:image/png;base64,${msg.attachment_data}`, // Assuming base64 image data
+                }] : (msg.attachments || []) // Preserve if already formatted
+              }));
+              //console.log('Setting messages:', formattedMessages);
+              setMessages(formattedMessages);
+          } else if (response?.error) {
+               console.error("Error fetching messages:", response.error);
+               setError(response.error);
+               setMessages([]);
+          }
+           else {
+            //console.log("No messages found or invalid response format for conversation:", conversationId);
+            setMessages([]);
+          }
+        } catch (err) {
+          console.error('Error in handleConversationSelect:', err);
+          setError(err.message);
+          setMessages([]);
+        }
+      };
+    // --- End Restored handleConversationSelect ---
+
 
     const startNewConversationWithNpc = async (npc) => {
         try {
@@ -249,6 +347,8 @@ const ChatInterface = () => {
         }
     };
 
+
+    // Initialization Effect (runs once)
     useEffect(() => {
         const init = async () => {
             try {
@@ -259,16 +359,13 @@ const ChatInterface = () => {
                 setBaseDir(loadedConfig.baseDir);
                 const defaultPath = await loadDefaultPath();
                 const pathToUse = defaultPath || loadedConfig.baseDir;
-                // Set path but don't load data here, let the next effect handle it
-                setCurrentPath(pathToUse);
+                setCurrentPath(pathToUse); // This will trigger the next effect
             } catch (err) {
                 console.error('Initialization error:', err);
                 setError(err.message);
-                setLoading(false);
-            }
-        };
+            }        };
         init();
-    }, []);
+    }, []); // Empty dependency array - runs once
 
     useEffect(() => {
         const loadData = async () => {
@@ -337,30 +434,6 @@ const ChatInterface = () => {
         }
     };
 
-    const handleConversationSelect = async (conversationId) => {
-        try {
-            setIsEditing(false);
-            setCurrentFile(null);
-            setActiveConversationId(conversationId);
-            const selectedConv = directoryConversations.find(conv => conv.id === conversationId);
-            setCurrentConversation(selectedConv || null);
-            const response = await window.api.getConversationMessages(conversationId);
-            if (response?.messages) {
-                 const formattedMessages = response.messages.map(msg => ({
-                    ...msg,
-                    timestamp: msg.timestamp || new Date().toISOString(),
-                 }));
-                setMessages(formattedMessages);
-            } else {
-                setMessages([]);
-                console.log("No messages found or error:", response?.error);
-            }
-        } catch (err) {
-            console.error('Error loading conversation:', err);
-            setError(err.message);
-            setMessages([]);
-        }
-    };
 
     const createNewConversation = async () => {
         try {
@@ -371,7 +444,12 @@ const ChatInterface = () => {
                 model: currentModel || config?.model || 'llama3.2',
                 directory_path: currentPath
             });
-            await refreshConversations(); // Refresh list to include the new one
+            setDirectoryConversations(prev => [...prev, {
+                 id: conversation.id,
+                 title: 'New Conversation',
+                 preview: 'No content',
+                 timestamp: Date.now()
+            }]);
             setActiveConversationId(conversation.id); // Set it active
             setCurrentConversation(conversation);
             setMessages([]);
@@ -716,7 +794,7 @@ const ChatInterface = () => {
     );
 
     const renderChatView = () => (
-         <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0">
             <div className="p-2 border-b border-gray-700 text-xs text-gray-500 flex-shrink-0">
                 <div>Active Conversation: {activeConversationId || 'None'}</div>
                 <div>Messages Count: {messages.length}</div>
@@ -797,8 +875,25 @@ const ChatInterface = () => {
 
     const renderInputArea = () => (
         <div className="px-4 pt-2 pb-3 border-t border-gray-700 bg-gray-800 flex-shrink-0">
-            <div className="relative bg-gray-900 border border-gray-700 rounded-lg">
-                <form onSubmit={handleInputSubmit} className="flex items-end p-2 gap-2">
+            <div
+                className="relative bg-gray-900 border border-gray-700 rounded-lg group" // Added group for potential hover effects
+                onDragOver={(e) => { e.preventDefault(); setIsHovering(true); }} // Prevent default to allow drop
+                onDragEnter={() => setIsHovering(true)}
+                onDragLeave={() => setIsHovering(false)}
+                onDrop={(e) => {
+                    e.preventDefault(); // Prevent browser from opening file
+                    setIsHovering(false);
+                    handleDrop(e); // Use existing handleDrop logic
+                }}
+            >
+                {isHovering && (
+                    <div className="absolute inset-0 bg-blue-500/20 border-2 border-dashed border-blue-400 rounded-lg flex items-center justify-center z-10 pointer-events-none">
+                        <span className="text-blue-300 font-semibold">Drop files here</span>
+                    </div>
+                )}
+
+                <form onSubmit={handleInputSubmit} className="flex items-end p-2 gap-2 relative z-0"> {/* Ensure form is below indicator if needed */}
+                    {/* Hidden file input */}
                     <input
                         ref={fileInputRef}
                         type="file"
@@ -807,15 +902,17 @@ const ChatInterface = () => {
                         multiple
                         accept="image/*, text/*, application/pdf, .py, .js, .jsx, .ts, .tsx, .html, .css, .json, .md"
                     />
+                    {/* Textarea */}
                     <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleInputSubmit(e); } }}
-                        placeholder="Type a message..."
+                        placeholder="Type a message or drop files..." // Update placeholder
                         className="flex-grow bg-[#0b0c0f] text-sm text-gray-300 rounded-lg px-4 py-3 placeholder-gray-600 focus:outline-none border-0 min-h-[56px] max-h-[200px] resize-none"
                         rows={1}
                         style={{ overflowY: 'auto' }}
                     />
+                    {/* Attach button */}
                     <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
@@ -824,6 +921,7 @@ const ChatInterface = () => {
                     >
                         <Paperclip size={20} />
                     </button>
+                    {/* Send button */}
                     <button
                         type="submit"
                         disabled={!input.trim() && uploadedFiles.length === 0}
@@ -832,6 +930,8 @@ const ChatInterface = () => {
                         <Send size={16}/>
                     </button>
                 </form>
+
+
                 <div className="flex items-center gap-2 px-2 pb-2">
                     <select value={currentModel || ''} onChange={e => setCurrentModel(e.target.value)} className="bg-gray-800 text-xs rounded px-2 py-1 border border-gray-700 flex-grow" disabled={modelsLoading || !!modelsError}>
                         {modelsLoading && <option value="">Loading...</option>}
@@ -848,9 +948,9 @@ const ChatInterface = () => {
     );
 
     const renderMainContent = () => (
-        <main className={`flex-1 flex flex-col bg-gray-900 ${isDarkMode ? 'dark-mode' : 'light-mode'} overflow-hidden`}>
-            {isEditing ? renderFileEditor() : renderChatView()}
-        </main>
+    <main className={`flex-1 flex flex-col bg-gray-900 ${isDarkMode ? 'dark-mode' : 'light-mode'} overflow-hidden`}>
+        {isEditing ? renderFileEditor() : renderChatView()}
+    </main>
     );
 
     const renderModals = () => (

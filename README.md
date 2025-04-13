@@ -54,15 +54,15 @@ NPC Studio is licensed under AGPLv3 with additional terms explicitly prohibiting
 
 
 
-# letting ppl see lineage in npc team
+### items to do...
 
+letting ppl see lineage in npc team
+-finish markdown rendering
 -add a stop button
-add copy right lcik
-add a markdown render
-
-
-
-
--add a stop button
-add copy right lcik
-add a markdown render
+-add copy right lcik
+-add a markdown render
+--dark light theme halfway thru
+--fix npc team menu
+-fix tool menu
+-database ovoervieiw tab
+-

@@ -12,7 +12,10 @@ const { dialog } = require('electron');
 
 const logFilePath = path.join(process.resourcesPath, 'app.log');
 const logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
-
+let mainWindow = null;
+app.setAppUserModelId('com.npc_studio.chat');
+app.name = 'npc-studio';
+app.setName('npc-studio');
 const log = (...messages) => {
     const msg = messages.join(' ');
     console.log(msg);
@@ -286,10 +289,16 @@ if (!gotTheLock) {
   }
 
   function createWindow() {
+    const iconPath = path.resolve(__dirname, '..', 'build', 'icons', '512x512.png');
+    console.log(`[ICON DEBUG] Using direct path: ${iconPath}`);
+
     console.log('Creating window');
     const mainWindow = new BrowserWindow({
       width: 1200,
       height: 800,
+      icon: iconPath,
+      title: 'NPC Studio',
+      name: 'npc-studio',
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: true,
@@ -298,8 +307,10 @@ if (!gotTheLock) {
         preload: path.join(__dirname, 'preload.js')
       }
     });
+    setTimeout(() => {
+      mainWindow.setIcon('/home/caug/npcww/npc-studio/assets/icon.png');
+    }, 100);
 
-    // Change win to mainWindow here
     registerGlobalShortcut(mainWindow);
 
 
@@ -331,6 +342,8 @@ if (!gotTheLock) {
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
       console.error('Failed to load:', errorCode, errorDescription);
     });
+
+
   }
 
 
@@ -349,7 +362,7 @@ if (!gotTheLock) {
 
 
     ipcMain.handle('getAvailableModels', async (event, currentPath) => {
-      log('Handler: getAvailableModels called for path:', currentPath); // Use your log function
+      //log('Handler: getAvailableModels called for path:', currentPath); // Use your log function
       if (!currentPath) {
           log('Error: getAvailableModels called without currentPath');
           return { models: [], error: 'Current path is required to fetch models.' };
@@ -726,7 +739,7 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
 
   ipcMain.handle('getConversations', async (_, path) => {
     try {
-      console.log('Handler: getConversations called for path:', path);
+      //console.log('Handler: getConversations called for path:', path);
       // Add filesystem check to see if directory exists
       try {
         await fsPromises.access(path);
@@ -747,7 +760,7 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
       }
 
       const responseText = await response.text();
-      console.log('Raw API response text:', responseText);
+      //console.log('Raw API response text:', responseText);
 
       let data;
       try {
@@ -757,7 +770,7 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
         return { conversations: [], error: 'Invalid JSON response' };
       }
 
-      console.log('Parsed conversations data from API:', data);
+      //console.log('Parsed conversations data from API:', data);
 
       // Ensure we always return in the expected format
       return {
@@ -862,26 +875,26 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
             ...row,
             attachment_data: row.attachment_data ? row.attachment_data.toString('base64') : null, // Convert BLOB to Base64
           })));
-          console.log('Handler: getConversationMessages called for:', rows);
+          //console.log('Handler: getConversationMessages called for:', rows);
         }
       });
     });
   });
 
   ipcMain.handle('getDefaultConfig', () => {
-    console.log('Handler: getDefaultConfig called');
+    //console.log('Handler: getDefaultConfig called');
     console.log('CONFIG:', DEFAULT_CONFIG);
     return DEFAULT_CONFIG;
 
   });
 
   ipcMain.handle('getWorkingDirectory', () => {
-    console.log('Handler: getWorkingDirectory called');
+    //console.log('Handler: getWorkingDirectory called');
     return DEFAULT_CONFIG.baseDir;
   });
 
   ipcMain.handle('setWorkingDirectory', async (_, dir) => {
-    console.log('Handler: setWorkingDirectory called with:', dir);
+    //console.log('Handler: setWorkingDirectory called with:', dir);
     try {
       const normalizedDir = path.normalize(dir);
       const baseDir = DEFAULT_CONFIG.baseDir;
@@ -917,12 +930,12 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
   ipcMain.handle('readDirectoryStructure', async (_, dirPath) => {
     const structure = {};
     const allowedExtensions = ['.py', '.md', '.js', '.json', '.txt', '.yaml', '.yml', '.html', '.css', '.npc', '.tool'];
-    console.log(`[Main Process] readDirectoryStructure called for: ${dirPath}`); // LOG 1
+    //console.log(`[Main Process] readDirectoryStructure called for: ${dirPath}`); // LOG 1
 
     try {
       await fsPromises.access(dirPath, fs.constants.R_OK);
       const items = await fsPromises.readdir(dirPath, { withFileTypes: true });
-      console.log(`[Main Process] Read ${items.length} items from ${dirPath}`); // LOG 2
+      //console.log(`[Main Process] Read ${items.length} items from ${dirPath}`); // LOG 2
 
       for (const item of items) {
         const itemPath = path.join(dirPath, item.name);
@@ -931,12 +944,12 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
         } else if (item.isFile()) {
           const ext = path.extname(item.name).toLowerCase();
           if (allowedExtensions.includes(ext)) {
-            console.log(`[Main Process] Found allowed file: ${item.name}`); // LOG 3
+            //console.log(`[Main Process] Found allowed file: ${item.name}`); // LOG 3
             structure[item.name] = { type: 'file', path: itemPath };
           }
         }
       }
-      console.log(`[Main Process] Returning structure for ${dirPath}:`, JSON.stringify(structure, null, 2)); // LOG 4 (Critical: See the final structure)
+      //console.log(`[Main Process] Returning structure for ${dirPath}:`, JSON.stringify(structure, null, 2)); // LOG 4 (Critical: See the final structure)
       return structure;
 
     } catch (err) {
@@ -949,7 +962,7 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
 
 
   ipcMain.handle('goUpDirectory', async (_, currentPath) => {
-    console.log('goUpDirectory called with:', currentPath);
+    //console.log('goUpDirectory called with:', currentPath);
     if (!currentPath) {
       console.log('No current path, returning base dir');
       return DEFAULT_CONFIG.baseDir;
@@ -960,7 +973,7 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
   });
 
   ipcMain.handle('readDirectory', async (_, dir) => {
-    console.log('Handler: readDirectory called for:', dir);
+    //console.log('Handler: readDirectory called for:', dir);
     try {
       const items = await fsPromises.readdir(dir, { withFileTypes: true });
       return items.map(item => ({

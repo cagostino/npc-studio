@@ -3,30 +3,68 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --theme-bg-light: #ffffff;
+  --theme-text-light: #333333;
+  --theme-primary-light: #4caf50;
+  --theme-primary-hover-light: #45a049;
+  --theme-border-light: #cccccc;
+  --theme-input-bg-light: #ffffff;
+  --theme-input-border-light: #dddddd;
+  --theme-button-new-light: #2563eb;
+  --theme-button-new-hover-light: #3b82f6;
+
+  --theme-bg-dark: #111827;
+  --theme-text-dark: #f3f4f6;
+  --theme-primary-dark: #22c55e;
+  --theme-primary-hover-dark: #16a34a;
+  --theme-border-dark: #444444;
+  --theme-input-bg-dark: #1f2937;
+  --theme-input-border-dark: #444444;
+  --theme-button-new-dark: #2563eb;
+  --theme-button-new-hover-dark: #3b82f6;
+
+  --theme-bg: var(--theme-bg-dark);
+  --theme-text: var(--theme-text-dark);
+  --theme-primary: var(--theme-primary-dark);
+  --theme-primary-hover: var(--theme-primary-hover-dark);
+  --theme-border: var(--theme-border-dark);
+  --theme-input-bg: var(--theme-input-bg-dark);
+  --theme-input-border: var(--theme-input-border-dark);
+  --theme-button-new: var(--theme-button-new-dark);
+  --theme-button-new-hover: var(--theme-button-new-hover-dark);
+}
+
+body {
+    background-color: var(--theme-bg);
+    color: var(--theme-text);
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
 body.dark-mode {
-    background-color: #222; /* Dark background for the entire page */
-    color: white;
+    --theme-bg: var(--theme-bg-dark);
+    --theme-text: var(--theme-text-dark);
+    --theme-primary: var(--theme-primary-dark);
+    --theme-primary-hover: var(--theme-primary-hover-dark);
+    --theme-border: var(--theme-border-dark);
+    --theme-input-bg: var(--theme-input-bg-dark);
+    --theme-input-border: var(--theme-input-border-dark);
+    --theme-button-new: var(--theme-button-new-dark);
+    --theme-button-new-hover: var(--theme-button-new-hover-dark);
 }
 
 body.light-mode {
-    background-color: #fff; /* White background for light mode */
-    color: #333; /* Dark text for light mode */
+    --theme-bg: var(--theme-bg-light);
+    --theme-text: var(--theme-text-light);
+    --theme-primary: var(--theme-primary-light);
+    --theme-primary-hover: var(--theme-primary-hover-light);
+    --theme-border: var(--theme-border-light);
+    --theme-input-bg: var(--theme-input-bg-light);
+    --theme-input-border: var(--theme-input-border-light);
+    --theme-button-new: var(--theme-button-new-light);
+    --theme-button-new-hover: var(--theme-button-new-hover-light);
 }
 
-.chat-container {
-    background-color: inherit;  /* Inherit the background color from body */
-    color: inherit; /* Inherit text color from body */
-}
-
-
-.send-button {
-    background-color: #4caf50;
-    color: white;
-}
-
-
-
-/* Chat Container */
 .chat-container {
     display: flex;
     flex-direction: column;
@@ -37,19 +75,6 @@ body.light-mode {
     overflow: hidden;
 }
 
-/* Dark Mode for Chat Container - inherits */
-.chat-container.dark-mode {
-    background-color: inherit;
-    color: white;
-}
-
-/* Light Mode for Chat Container */
-.chat-container.light-mode {
-    background-color: white;
-    color: #333;
-}
-
-/* Message List */
 .message-list {
     flex-grow: 1;
     overflow-y: auto;
@@ -57,23 +82,9 @@ body.light-mode {
     padding: 10px;
     background-color: inherit;
     border-radius: 10px;
-    max-height: calc(100vh - 120px);
     box-sizing: border-box;
 }
 
-/* Dark Mode for Message List - inherits */
-.message-list.dark-mode {
-    background-color: inherit;
-    color: white;
-}
-
-/* Light Mode for Message List */
-.message-list.light-mode {
-    background-color: white;
-    color: #333;
-}
-
-/* Input and Button Styles */
 .message-input-container {
     display: flex;
     align-items: flex-start;
@@ -85,38 +96,25 @@ body.light-mode {
     width: 80%;
     padding: 12px;
     font-size: 16px;
-    border: 2px solid #444;
+    border: 2px solid var(--theme-input-border);
     border-radius: 8px;
     resize: none;
-    background-color: inherit;
-    color: inherit;
+    background-color: var(--theme-input-bg);
+    color: var(--theme-text);
     overflow-y: auto;
     max-height: 120px;
     box-sizing: border-box;
     margin-right: 10px;
 }
 
-/* Dark Mode for Input - inherits */
-.message-input.dark-mode {
-    background-color: inherit;
-    color: white;
-}
-
-/* Light Mode for Input */
-.message-input.light-mode {
-    background-color: white;
-    color: #333;
-}
-
 .message-input:focus {
-    border-color: #4caf50;
-    outline: none;
-    background-color: inherit;
+    border-color: var(--theme-primary);
+    outline-color: var(--theme-primary);
 }
 
 .send-button {
     padding: 12px 20px;
-    background-color: #4caf50;
+    background-color: var(--theme-primary);
     color: white;
     border: none;
     border-radius: 8px;
@@ -125,7 +123,7 @@ body.light-mode {
 }
 
 .send-button:hover {
-    background-color: #45a049;
+    background-color: var(--theme-primary-hover);
 }
 
 .send-button:disabled {
@@ -133,14 +131,13 @@ body.light-mode {
     cursor: not-allowed;
 }
 
-/* Theme Toggle Button */
 .theme-toggle-btn {
     position: absolute;
     top: 20px;
     right: 20px;
     padding: 10px;
     border: none;
-    background-color: #4caf50;
+    background-color: var(--theme-primary);
     color: white;
     border-radius: 50%;
     cursor: pointer;
@@ -148,5 +145,12 @@ body.light-mode {
 }
 
 .theme-toggle-btn:hover {
-    background-color: #45a049;
+    background-color: var(--theme-primary-hover);
 }
+
+.bg-blue-600 { background-color: var(--theme-button-new); }
+.hover\:bg-blue-500:hover { background-color: var(--theme-button-new-hover); }
+.border-gray-700 { border-color: var(--theme-border); }
+.bg-gray-900 { background-color: var(--theme-bg); }
+.text-gray-100 { color: var(--theme-text); }
+.bg-\[\#0b0c0f\] { background-color: var(--theme-input-bg); }
