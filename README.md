@@ -9,26 +9,27 @@ The AI application for Agent development.
 
 
 ## Chat with Agents and orgagnize by project path
-NPC Studio gives users the capability to organize their conversations with AI agentst in a natural and convenient way. Users can easily change working directories and separate their conversations by project path.
+- NPC Studio gives users the capability to organize their conversations with AI agentst in a natural and convenient way. Users can easily change working directories and separate their conversations by project path.
 
 ![npc studio chat window interface](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/chat_window.png)
 
-Aggregate conversations:
+- Aggregate conversations:
+
 ![select multiple conversations](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/aggregrate_conversations.png)
 
-Aggregate messages (to come)
+- Aggregate messages (to come)
 
 ## Create and manage agents, tools
-NPC Studio uses the `npcsh` agent framework to simplify the building and orchestration of AI agents.
+- NPC Studio uses the `npcsh` agent framework to simplify the building and orchestration of AI agents.
 
 ![edit your agents](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/edit_npcs.png)
 
-Additionally, users can create and manage tools to be used by agents. 
+- Additionally, users can create and manage tools to be used by agents. 
 ![edit your tools](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/tool.png)
 
 
 ## Edit plain text files
-NPC Studio is not just a chat interface, users can also edit plain text files (with agent-based integrations soon to come).
+- NPC Studio is not just a chat interface, users can also edit plain text files (with agent-based integrations soon to come).
 
 ![npc studio interface for editing plain text files](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/edit_files.png)
 
@@ -37,13 +38,15 @@ NPC Studio is not just a chat interface, users can also edit plain text files (w
 ## Edit settings 
 
 ### Global Settings
+
 ![npc studio global settings](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/default_settings.png)
 
 
 ### Project Settings
+
 ![npc studio env variables for project settings](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/env_variables.png)
 
-When working in a specific folder, NPC Studio will discover an `.env` fiel if it's present and will use these API keys to determine which models can be used within the project.
+-When working in a specific folder, NPC Studio will discover an `.env` fiel if it's present and will use these API keys to determine which models can be used within the project.
 
 ![npc studio chat window interface](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/model_selector.png)
 
