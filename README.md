@@ -48,11 +48,23 @@ The AI application for Agent development.
 
 -When working in a specific folder, NPC Studio will discover an `.env` fiel if it's present and will use these API keys to determine which models can be used within the project.
 
-![npc studio chat window interface](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/model_selector.png)
+![npc studio chat model selector](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/model_selector.png)
 
 
 
 
+## Activity Dashboard (planned)
+
+- view key activity metrics 
+
+## Knowledge Graph (planned)
+- view the knowledge graph built up over time through your actions
+
+## Use mixtures of agents (planned)
+
+## Exploratory data analysis (planned)
+
+## Automate with cron jobs and system daemons (planned)
 
 
 
