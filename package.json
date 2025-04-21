@@ -8,7 +8,8 @@
     "generate-icons": "electron-icon-builder --input=./assets/icon.png --output=./build",
     "start": "electron .",
     "dev": "vite",
-    "build": "electron-builder",
+    "build:vite": "vite build",
+    "build": "npm run build:vite && electron-builder",
     "preview": "vite preview",
     "rebuild": "electron-rebuild",
     "postinstall": "electron-rebuild",
@@ -21,7 +22,6 @@
     "files": [
       "dist/**/*",
       "src/**/*",
-      "node_modules/**/*",
       "package.json"
     ],
     "directories": {
@@ -44,13 +44,15 @@
     },
     "extraResources": [
       {
-        "from": "resources/backend/",
-        "to": "resources/backend/",
-        "filter": [
-          "**/*"
-        ]
+        "from": "build",
+        "to": "build"
+      },
+      {
+        "from": "assets",
+        "to": "assets"
       }
     ]
+  
   },
   "dependencies": {
     "@headlessui/react": "^2.2.0",
