@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const fsPromises = require('fs/promises');
 const os = require('os');
-const sqlite3 = require('sqlite3').verbose();
+const sqlite3 = require('better-sqlite3');
 const dbPath = path.join(os.homedir(), 'npcsh_history.db');
 const fetch = require('node-fetch');
 const { dialog } = require('electron');
@@ -98,14 +98,16 @@ app.whenReady().then(async () => {
 
   try {
     log('Starting backend server...');
-    backendProcess = spawn('npc', ['serve', '-p', '5337'], {
+    const npcPath = path.join(os.homedir(), 'npcww', 'npcsh', '.venv', 'Scripts', 'npc');
+
+    backendProcess = spawn(npcPath, ['serve', '-p', '5337'], {
       stdio: 'inherit',
       env: {
         ...process.env,
         CORNERIA_DATA_DIR: dataPath,
         NPC_STUDIO_PORT: '5337',
         FLASK_DEBUG: '1',
-        PYTHONUNBUFFERED: '1',
+        PYTHONUNBUFFERED: '1',  
       },
     });
 
