@@ -10,7 +10,7 @@ const dbPath = path.join(os.homedir(), 'npcsh_history.db');
 const fetch = require('node-fetch');
 const { dialog } = require('electron');
 
-const logFilePath = path.join(process.resourcesPath, 'app.log');
+const logFilePath = path.join(os.homedir(), '.npc_studio', 'app.log');
 const logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
 let mainWindow = null;
 app.setAppUserModelId('com.npc_studio.chat');
@@ -29,11 +29,125 @@ const DEFAULT_CONFIG = {
   provider: 'ollama',
   npc: 'sibiji',
 };
+
 let isCapturingScreenshot = false;
 
 let lastScreenshotTime = 0;
 const SCREENSHOT_COOLDOWN = 1000; // 1 second cooldown between screenshots
 
+let backendProcess = null;
+
+
+async function waitForServer(maxAttempts = 30, delay = 1000) {
+  log('Waiting for backend server to start...');
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch('http://127.0.0.1:5337/api/health');
+      if (response.ok) {
+        log(`Backend server is ready (attempt ${attempt}/${maxAttempts})`);
+        return true;
+      }
+    } catch (err) {
+      // Server not ready yet, will retry
+      log(`Waiting for server... attempt ${attempt}/${maxAttempts}`);
+    }
+    
+    // Wait before next attempt
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  
+  log('Backend server failed to start in the allocated time');
+  return false;
+}
+
+async function ensureBaseDir() {
+  try {
+    await fsPromises.mkdir(DEFAULT_CONFIG.baseDir, { recursive: true });
+    await fsPromises.mkdir(path.join(DEFAULT_CONFIG.baseDir, 'conversations'), { recursive: true });
+    await fsPromises.mkdir(path.join(DEFAULT_CONFIG.baseDir, 'config'), { recursive: true });
+    await fsPromises.mkdir(path.join(DEFAULT_CONFIG.baseDir, 'images'), { recursive: true });
+    await fsPromises.mkdir(path.join(DEFAULT_CONFIG.baseDir, 'screenshots'), { recursive: true });
+  } catch (err) {
+    console.error('Error creating base directory:', err);
+  }
+}
+
+
+app.whenReady().then(async () => {
+  // Ensure user data directory exists
+  const dataPath = ensureUserDataDirectory();
+
+  protocol.registerFileProtocol('file', (request, callback) => {
+    const filepath = request.url.replace('file://', '');
+    try {
+        return callback(decodeURIComponent(filepath));
+    } catch (error) {
+        console.error(error);
+    }
+  });
+
+  protocol.registerFileProtocol('media', (request, callback) => {
+    const url = request.url.replace('media://', '');
+    try {
+        return callback(decodeURIComponent(url));
+    } catch (error) {
+        console.error(error);
+    }
+  });
+
+  try {
+    log('Starting backend server...');
+    backendProcess = spawn('npc', ['serve', '-p', '5337'], {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        CORNERIA_DATA_DIR: dataPath,
+        NPC_STUDIO_PORT: '5337',
+        FLASK_DEBUG: '1',
+        PYTHONUNBUFFERED: '1',
+      },
+    });
+
+    backendProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.error('Backend server exited with code:', code);
+      }
+    });
+
+    backendProcess.on('error', (err) => {
+      console.error('Failed to start backend server:', err);
+    });
+    
+    // Wait for server to be ready before proceeding
+    const serverReady = await waitForServer();
+    if (!serverReady) {
+      console.error('Backend server failed to start in time');
+      // You might want to display an error message to the user here
+    }
+  } catch (err) {
+    console.error('Error spawning backend server:', err);
+  }
+
+  // Ensure base directories and create the main window
+  await ensureBaseDir();
+  createWindow();
+});
+
+async function callBackendApi(url, options = {}) {
+  try {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP error ${response.status}: ${errorText}`);
+    }
+    return await response.json();
+  } catch (err) {
+    console.error(`API call failed to ${url}:`, err);
+    // Return a consistent error object
+    return { error: err.message, success: false };
+  }
+}
 function ensureUserDataDirectory() {
   const userDataPath = path.join(os.homedir(), '.npc_studio', 'data');
   log('Creating user data directory:', userDataPath);
@@ -165,13 +279,7 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  const DEFAULT_CONFIG = {
-    baseDir: path.resolve(os.homedir(), '.npcsh'),
-    model: 'llama3.2',
-    provider: 'ollama',
-    stream: true,
-    npc: 'sibiji'
-  };
+
 
   const expandHomeDir = (filepath) => {
     if (filepath.startsWith('~')) {
@@ -224,17 +332,6 @@ if (!gotTheLock) {
     }
   }]);
 
-  async function ensureBaseDir() {
-    try {
-      await fsPromises.mkdir(DEFAULT_CONFIG.baseDir, { recursive: true });
-      await fsPromises.mkdir(path.join(DEFAULT_CONFIG.baseDir, 'conversations'), { recursive: true });
-      await fsPromises.mkdir(path.join(DEFAULT_CONFIG.baseDir, 'config'), { recursive: true });
-      await fsPromises.mkdir(path.join(DEFAULT_CONFIG.baseDir, 'images'), { recursive: true });
-      await fsPromises.mkdir(path.join(DEFAULT_CONFIG.baseDir, 'screenshots'), { recursive: true });
-    } catch (err) {
-      console.error('Error creating base directory:', err);
-    }
-  }
 
   async function getConversationsFromDb(dirPath) {
     return new Promise((resolve, reject) => {
@@ -289,11 +386,12 @@ if (!gotTheLock) {
   }
 
   function createWindow() {
+
     const iconPath = path.resolve(__dirname, '..', 'build', 'icons', '512x512.png');
     console.log(`[ICON DEBUG] Using direct path: ${iconPath}`);
-
+  
     console.log('Creating window');
-    const mainWindow = new BrowserWindow({
+    mainWindow = new BrowserWindow({ // Remove the 'const' keyword here
       width: 1200,
       height: 800,
       icon: iconPath,
@@ -307,10 +405,16 @@ if (!gotTheLock) {
         preload: path.join(__dirname, 'preload.js')
       }
     });
+    
     setTimeout(() => {
-      mainWindow.setIcon('/home/caug/npcww/npc-studio/assets/icon.png');
+      const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
+      if (fs.existsSync(iconPath)) {
+        mainWindow.setIcon(iconPath);
+      } else {
+        console.log(`Warning: Icon file not found at ${iconPath}`);
+      }
     }, 100);
-
+  
     registerGlobalShortcut(mainWindow);
 
 
@@ -334,9 +438,10 @@ if (!gotTheLock) {
         }
       });
     });
+    const htmlPath = path.join(app.getAppPath(), 'dist', 'index.html');
+    mainWindow.loadFile(htmlPath)
+    console.log(`Loading from packaged app path: ${htmlPath}`);
 
-    console.log('DEV MODE: Loading from localhost:5173');
-    mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
 
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -455,6 +560,11 @@ if (!gotTheLock) {
 // Clean up on app quit
 app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    if (backendProcess) {
+      log('Killing backend process');
+      backendProcess.kill();
+    }
+  
   });
   ipcMain.handle('getNPCTeamGlobal', async () => {
     try {
@@ -695,17 +805,18 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
     event.sender.send('stream-error', err.message);
   }
 });
-  ipcMain.handle('get-attachment', async (event, attachmentId) => {
-    const response = await fetch('http://127.0.0.1:5337/api/attachment/${attachmentId}');
-    return response.json();
-  });
+// To these:
+ipcMain.handle('get-attachment', async (event, attachmentId) => {
+  const response = await fetch(`http://127.0.0.1:5337/api/attachment/${attachmentId}`);
+  return response.json();
+});
 
-  ipcMain.handle('get-message-attachments', async (event, messageId) => {
-    const response = await fetch('http://127.0.0.1:5337/api/attachments/${messageId}');
-    return response.json();
-  });
+ipcMain.handle('get-message-attachments', async (event, messageId) => {
+  const response = await fetch(`http://127.0.0.1:5337/api/attachments/${messageId}`);
+  return response.json();
+});
 
-  ipcMain.handle('executeCommand', async (_, data) => {
+ipcMain.handle('executeCommand', async (_, data) => {
     try {
       console.log('Executing command:', data);
       console.log('Data type:', typeof data);
@@ -1086,62 +1197,7 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
     }
   });
 
-  // App lifecycle events
-// App lifecycle events
 
-app.whenReady().then(async () => {
-  globalShortcut.register('CommandOrControl+Space', () => {
-      showWindow();
-  });
-  const dataPath = ensureUserDataDirectory();
-  const backendServerPath = path.join(process.resourcesPath, 'backend_server');
-
-  if (!fs.existsSync(backendServerPath)) {
-    log('ERROR: Backend server not found at:', backendServerPath);
-    log('Checking resource path contents:', fs.readdirSync(process.resourcesPath));
-}
-
-backendProcess = spawn(backendServerPath, [], {
-  stdio: 'inherit',
-  env: {
-      ...process.env,
-      CORNERIA_DATA_DIR: dataPath,
-      NPC_STUDIO_PORT: '5337', // Change port if necessary
-      FLASK_DEBUG: '1',
-      PYTHONUNBUFFERED: '1'
-  }
-});
-
-
-backendProcess.on('close', (code) => {
-  if (code !== 0) {
-      console.error('Backend server exited with code:', code);
-  }
-}
-);
-
-  // Register both protocols here
-  protocol.registerFileProtocol('file', (request, callback) => {
-    const filepath = request.url.replace('file://', '');
-    try {
-        return callback(decodeURIComponent(filepath));
-    } catch (error) {
-        console.error(error);
-    }
-});
-
-  protocol.registerFileProtocol('media', (request, callback) => {
-    const url = request.url.replace('media://', '');
-    try {
-        return callback(decodeURIComponent(url));
-    } catch (error) {
-        console.error(error);
-    }
-  });
-
-  await ensureBaseDir();
-  createWindow();
-});
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
