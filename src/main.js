@@ -775,7 +775,7 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
         model: data.model,
         npc: data.npc,
         attachments: data.attachments || [], // Add support for attachments
-      }),
+      }), 
     });
 
     if (!response.ok) {

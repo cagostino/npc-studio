@@ -3,9 +3,13 @@
 
 set -e  # Exit on any error
 
+pyinstaller --onefile npc_studio_serve.py
+
 echo "==== Building npc-studio ===="
 cd ~/npcww/npc-studio
 npm run build
+
+
 
 # Find the path to the new .deb file
 DEB_FILE=$(find ./dist-electron -name "*.deb" -type f -print -quit)
