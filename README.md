@@ -3,9 +3,9 @@
 </p>
 
 
-# npc-studio
+# NPC Studio
 
-The AI application for Agent development.
+NPC Studio is an AI IDE that lets users have AI conversations, edit files, explore data, execute code, and much more.
 
 
 
@@ -122,15 +122,8 @@ NPC Studio is licensed under AGPLv3 with additional terms explicitly prohibiting
 
 
 ### items to do...
-- interrupt button 
-- markdown rendering
-
 - letting ppl see lineage in npc team
-- finish markdown rendering
-- add a stop button
-- add copy right lcik
-- add a markdown render
 - dark light theme halfway thru
 - fix npc team menu
 - fix tool menu
-- database ovoervieiw tab
+- database overview tab
