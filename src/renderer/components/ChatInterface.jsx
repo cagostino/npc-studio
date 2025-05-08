@@ -1034,9 +1034,7 @@ const ChatInterface = () => {
             </div>
         </div>
     );
-// In ChatInterface.js
 
-    // Replace the entire renderChatView function with this corrected version:
     const renderChatView = () => (
         <div className="flex-1 flex flex-col min-h-0">
             <div className="p-2 border-b border-gray-700 text-xs text-gray-500 flex-shrink-0">
@@ -1080,7 +1078,7 @@ const ChatInterface = () => {
                     </div>
                 )}
 
-                {/* Conditional Rendering for No Conversation or No Messages */}
+                {/* Message List with Lazy Loading */}
                 {!activeConversationId ? (
                     <div className="flex items-center justify-center h-full text-gray-500">
                         Select or create a conversation
@@ -1090,104 +1088,117 @@ const ChatInterface = () => {
                         No messages in this conversation
                     </div>
                 ) : (
-                    /* Message List Mapping - Corrected */
-                    messages.map((message) => {
-                        const showStreamingIndicators = !!message.isStreaming;
-                        
-                        return (
-                            <div
-                                key={message.id ?? message.timestamp}
-                                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div className={`max-w-[85%] rounded-lg p-3 ${
-                                    message.role === 'user'
-                                        ? 'bg-blue-800 text-white'
-                                        : 'bg-gray-800 text-gray-200'
-                                    } ${message.type === 'error' ? 'bg-red-900 border border-red-700' : ''}`}
+                    <>
+                        {/* Load More Button - only shown if more than 10 messages */}
+                        {messages.length > 10 && (
+                            <div className="flex justify-center mb-4">
+                                <button 
+                                    onClick={() => setMessages(prevMessages => [...prevMessages])} // This would be replaced with actual pagination logic
+                                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md text-sm"
                                 >
-                                    {/* Message header */}
-                                    <div className="text-xs text-gray-400 mb-1 opacity-80">
-                                        {message.role === 'user' ? 'You' : (message.npc || message.model || 'Assistant')}
-                                        <span className="ml-2">
-                                            {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
-                                    </div>
-                    
-                                    {/* Message content Area */}
-                                    <div className="relative message-content-area">
-                                        {/* Bouncing dots shown above the message only when streaming */}
-                                        {showStreamingIndicators && (
-                                            <div className="absolute top-0 left-0 -translate-y-full flex space-x-1 mb-1">
-                                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
-                                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
-                                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
-                                            </div>
-                                        )}
-                    
-                                        {/* Reasoning Content (Thoughts) Section */}
-                                        {message.reasoningContent && (
-                                            <div className="mb-3 px-3 py-2 bg-gray-700 rounded-md border-l-2 border-yellow-500">
-                                                <div className="text-xs text-yellow-400 mb-1 font-semibold">Thinking Process:</div>
-                                                <div className="prose prose-sm prose-invert max-w-none text-gray-300 text-sm">
-                                                    <MarkdownRenderer content={message.reasoningContent || ''} />
-                                                </div>
-                                            </div>
-                                        )}
-                    
-                                        {/* Main Content */}
-                                        <div className="prose prose-sm prose-invert max-w-none">
-                                            <MarkdownRenderer content={message.content || ''} />
-                                            {showStreamingIndicators && message.type !== 'error' && (
-                                                <span className="ml-1 inline-block w-0.5 h-4 bg-gray-300 animate-pulse stream-cursor"></span>
-                                            )}
+                                    Load Previous Messages ({messages.length - 10} more)
+                                </button>
+                            </div>
+                        )
+                        }
+                        
+                        {/* Only show last 10 messages */}
+                        {messages.slice(Math.max(0, messages.length - 10)).map((message) => {
+                            const showStreamingIndicators = !!message.isStreaming;
+                            
+                            return (
+                                <div
+                                    key={message.id ?? message.timestamp}
+                                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                >
+                                    <div className={`max-w-[85%] rounded-lg p-3 ${
+                                        message.role === 'user'
+                                            ? 'bg-blue-800 text-white'
+                                            : 'bg-gray-800 text-gray-200'
+                                        } ${message.type === 'error' ? 'bg-red-900 border border-red-700' : ''}`}
+                                    >
+                                        {/* Message header */}
+                                        <div className="text-xs text-gray-400 mb-1 opacity-80">
+                                            {message.role === 'user' ? 'You' : (message.npc || message.model || 'Assistant')}
+                                            <span className="ml-2">
+                                                {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
                                         </div>
                     
-                                        {/* Tool Calls Section */}
-                                        {message.toolCalls && message.toolCalls.length > 0 && (
-                                            <div className="mt-3 px-3 py-2 bg-gray-700 rounded-md border-l-2 border-blue-500">
-                                                <div className="text-xs text-blue-400 mb-1 font-semibold">Function Calls:</div>
-                                                {message.toolCalls.map((tool, idx) => (
-                                                    <div key={idx} className="mb-2 last:mb-0">
-                                                        <div className="text-blue-300 text-sm">
-                                                            {tool.function_name || tool.function?.name || "Function"}
-                                                        </div>
-                                                        <pre className="bg-gray-900 p-2 rounded text-xs overflow-x-auto my-1">
-                                                            {JSON.stringify(
-                                                                tool.arguments || tool.function?.arguments || {}, 
-                                                                null, 2
-                                                            )}
-                                                        </pre>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
+                                        {/* Message content Area */}
+                                        <div className="relative message-content-area">
+                                            {/* Bouncing dots shown above the message only when streaming */}
+                                            {showStreamingIndicators && (
+                                                <div className="absolute top-0 left-0 -translate-y-full flex space-x-1 mb-1">
+                                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
+                                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
+                                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
+                                                </div>
+                                            )}
                     
-                                        {/* Attachments */}
-                                        {message.attachments?.length > 0 && (
-                                            <div className="mt-2 flex flex-wrap gap-2 border-t border-gray-700 pt-2">
-                                                {message.attachments.map((attachment, idx) => (
-                                                    <div key={idx} className="text-xs bg-gray-700 rounded px-2 py-1 flex items-center gap-1">
-                                                        <Paperclip size={12} className="flex-shrink-0" />
-                                                        <span className="truncate" title={attachment.name}>{attachment.name}</span>
-                                                        {/* Add image preview if data exists and is an image */}
-                                                        {attachment.data && attachment.name?.match(/\.(jpg|jpeg|png|gif|webp)$/i) && (
-                                                            <img
-                                                                src={attachment.data} // Assuming base64 data URL
-                                                                alt={attachment.name}
-                                                                className="mt-1 max-w-[100px] max-h-[100px] rounded-md object-cover"
-                                                            />
-                                                        )}
+                                            {/* Reasoning Content (Thoughts) Section */}
+                                            {message.reasoningContent && (
+                                                <div className="mb-3 px-3 py-2 bg-gray-700 rounded-md border-l-2 border-yellow-500">
+                                                    <div className="text-xs text-yellow-400 mb-1 font-semibold">Thinking Process:</div>
+                                                    <div className="prose prose-sm prose-invert max-w-none text-gray-300 text-sm">
+                                                        <MarkdownRenderer content={message.reasoningContent || ''} />
                                                     </div>
-                                                ))}
+                                                </div>
+                                            )}
+                    
+                                            {/* Main Content */}
+                                            <div className="prose prose-sm prose-invert max-w-none">
+                                                <MarkdownRenderer content={message.content || ''} />
+                                                {showStreamingIndicators && message.type !== 'error' && (
+                                                    <span className="ml-1 inline-block w-0.5 h-4 bg-gray-300 animate-pulse stream-cursor"></span>
+                                                )}
                                             </div>
-                                        )}
-                                    </div> {/* End message-content-area */}
+                    
+                                            {/* Tool Calls Section */}
+                                            {message.toolCalls && message.toolCalls.length > 0 && (
+                                                <div className="mt-3 px-3 py-2 bg-gray-700 rounded-md border-l-2 border-blue-500">
+                                                    <div className="text-xs text-blue-400 mb-1 font-semibold">Function Calls:</div>
+                                                    {message.toolCalls.map((tool, idx) => (
+                                                        <div key={idx} className="mb-2 last:mb-0">
+                                                            <div className="text-blue-300 text-sm">
+                                                                {tool.function_name || tool.function?.name || "Function"}
+                                                            </div>
+                                                            <pre className="bg-gray-900 p-2 rounded text-xs overflow-x-auto my-1">
+                                                                {JSON.stringify(
+                                                                    tool.arguments || tool.function?.arguments || {}, 
+                                                                    null, 2
+                                                                )}
+                                                            </pre>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                    
+                                            {/* Attachments */}
+                                            {message.attachments?.length > 0 && (
+                                                <div className="mt-2 flex flex-wrap gap-2 border-t border-gray-700 pt-2">
+                                                    {message.attachments.map((attachment, idx) => (
+                                                        <div key={idx} className="text-xs bg-gray-700 rounded px-2 py-1 flex items-center gap-1">
+                                                            <Paperclip size={12} className="flex-shrink-0" />
+                                                            <span className="truncate" title={attachment.name}>{attachment.name}</span>
+                                                            {/* Add image preview if data exists and is an image */}
+                                                            {attachment.data && attachment.name?.match(/\.(jpg|jpeg|png|gif|webp)$/i) && (
+                                                                <img
+                                                                    src={attachment.data} // Assuming base64 data URL
+                                                                    alt={attachment.name}
+                                                                    className="mt-1 max-w-[100px] max-h-[100px] rounded-md object-cover"
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div> {/* End message-content-area */}
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })
-
-                     /* End messages.map */
+                            );
+                        })}
+                    </>
                 )}
             </div> {/* End message list container */}
 
