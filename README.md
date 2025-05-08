@@ -8,10 +8,14 @@
 The AI application for Agent development.
 
 
+
 ## Chat with Agents and organize by project path
 - NPC Studio gives users the capability to organize their conversations with AI agentst in a natural and convenient way. Users can easily change working directories and separate their conversations by project path.
 
 ![npc studio chat window interface](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/chat_window.png)
+
+See thinking traces from agents:
+![npc studio chat window thinking trace](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/reasoning.png)
 
 - Aggregate conversations:
 
@@ -118,14 +122,15 @@ NPC Studio is licensed under AGPLv3 with additional terms explicitly prohibiting
 
 
 ### items to do...
+- interrupt button 
+- markdown rendering
 
-letting ppl see lineage in npc team
--finish markdown rendering
--add a stop button
--add copy right lcik
--add a markdown render
---dark light theme halfway thru
---fix npc team menu
--fix tool menu
--database ovoervieiw tab
--
+- letting ppl see lineage in npc team
+- finish markdown rendering
+- add a stop button
+- add copy right lcik
+- add a markdown render
+- dark light theme halfway thru
+- fix npc team menu
+- fix tool menu
+- database ovoervieiw tab
