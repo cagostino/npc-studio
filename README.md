@@ -10,7 +10,7 @@ NPC Studio is an AI IDE that lets users have AI conversations, edit files, explo
 
 
 ## Chat with Agents and organize by project path
-- NPC Studio gives users the capability to organize their conversations with AI agentst in a natural and convenient way. Users can easily change working directories and separate their conversations by project path.
+- NPC Studio gives users the capability to organize their conversations with AI agents in a natural and convenient way. Users can easily change working directories and separate their conversations by project path.
 
 ![npc studio chat window interface](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/chat_window.png)
 
