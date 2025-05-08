@@ -9,6 +9,7 @@ const sqlite3 = require('sqlite3').verbose();
 const dbPath = path.join(os.homedir(), 'npcsh_history.db');
 const fetch = require('node-fetch');
 const { dialog } = require('electron');
+const crypto = require('crypto');
 
 const logFilePath = path.join(os.homedir(), '.npc_studio', 'app.log');
 const logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
@@ -29,6 +30,13 @@ const DEFAULT_CONFIG = {
   provider: 'ollama',
   npc: 'sibiji',
 };
+
+function generateId() {
+  return crypto.randomUUID(); // Requires crypto module
+}
+
+const activeStreams = new Map();
+
 
 let isCapturingScreenshot = false;
 
@@ -538,7 +546,28 @@ if (!gotTheLock) {
     }
   });
 
-  // In main.js
+  ipcMain.handle('interruptStream', async (event, streamIdToInterrupt) => {
+    if (!activeStreams.has(streamIdToInterrupt)) {
+      return { success: false, error: 'Stream not found' };
+    }
+  
+    try {
+      const { stream } = activeStreams.get(streamIdToInterrupt);
+      
+      // Destroy the stream and clean up
+      if (stream && typeof stream.destroy === 'function') {
+        stream.destroy();
+      }
+      
+      activeStreams.delete(streamIdToInterrupt);
+      return { success: true };
+      
+    } catch (error) {
+      console.error('Error interrupting stream:', error);
+      return { success: false, error: error.message };
+    }
+  });
+  
   ipcMain.handle('wait-for-screenshot', async (event, screenshotPath) => {
     const maxAttempts = 20; // 10 seconds total
     const delay = 500; // 500ms between attempts
@@ -759,53 +788,101 @@ ipcMain.handle('save-tool', async (event, data) => {
         return { error: error.message };
     }
 });
+
+
+
 ipcMain.handle('executeCommandStream', async (event, data) => {
+  const currentStreamId = data.streamId || generateId(); // Should always have data.streamId from new React code
+  log(`[Main Process] executeCommandStream: Starting. streamId: ${currentStreamId}, command: ${data.commandstr ? data.commandstr.substring(0,50) : 'N/A'}...`);
+
   try {
-    const response = await fetch('http://127.0.0.1:5337/api/stream', {
+    const apiUrl = 'http://127.0.0.1:5337/api/stream';
+    log(`[Main Process] executeCommandStream: Fetching from ${apiUrl} for streamId ${currentStreamId}`);
+    const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         commandstr: data.commandstr,
         currentPath: data.currentPath,
         conversationId: data.conversationId,
         model: data.model,
         npc: data.npc,
-        attachments: data.attachments || [], // Add support for attachments
+        attachments: data.attachments || [],
+        // streamId: currentStreamId // Backend doesn't strictly need this if it just streams back
       }), 
     });
 
+    log(`[Main Process] executeCommandStream: Backend response status for streamId ${currentStreamId}: ${response.status}`);
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
+      const errorText = await response.text();
+      log(`[Main Process] executeCommandStream: Backend error for streamId ${currentStreamId}: ${response.status} - ${errorText}`);
+      throw new Error(`HTTP error! Status: ${response.status}. Body: ${errorText}`);
     }
 
-    // Use Node.js streams to handle the response body
     const stream = response.body;
+    if (!stream) {
+        log(`[Main Process] executeCommandStream: No response body (stream) from backend for streamId ${currentStreamId}.`);
+        event.sender.send('stream-error', { streamId: currentStreamId, error: 'Backend returned no stream data.' });
+        return { error: 'Backend returned no stream data.', streamId: currentStreamId };
+    }
+    
+    activeStreams.set(currentStreamId, { stream, eventSender: event.sender });
+    log(`[Main Process] executeCommandStream: Stream ${currentStreamId} added to activeStreams. Listening for data...`);
 
-    // Listen for data events
-    stream.on('data', (chunk) => {
-      // Send each chunk to the frontend
-      event.sender.send('stream-data', chunk.toString());
-    });
+    // IIFE to capture currentStreamId for async handlers
+    (function(capturedStreamId) {
+      let chunkCount = 0;
+      stream.on('data', (chunk) => {
+        chunkCount++;
+        const chunkContent = chunk.toString();
+        log(`[Main Process] executeCommandStream: Stream data CHUNK #${chunkCount} for streamId ${capturedStreamId}: ${chunkContent.substring(0, 100)}...`);
+        if (event.sender.isDestroyed()) {
+            log(`[Main Process] executeCommandStream: Renderer destroyed for streamId ${capturedStreamId}. Stopping stream.`);
+            stream.destroy();
+            activeStreams.delete(capturedStreamId);
+            return;
+        }
+        event.sender.send('stream-data', {
+          streamId: capturedStreamId,
+          chunk: chunkContent
+        });
+      });
 
-    // Listen for the end of the stream
-    stream.on('end', () => {
-      // Notify the frontend that the stream is complete
-      event.sender.send('stream-complete');
-    });
+      stream.on('end', () => {
+        log(`[Main Process] executeCommandStream: Stream ENDED for streamId ${capturedStreamId}. Total chunks: ${chunkCount}.`);
+        if (!event.sender.isDestroyed()) {
+            event.sender.send('stream-complete', { streamId: capturedStreamId });
+        }
+        activeStreams.delete(capturedStreamId);
+      });
 
-    // Listen for errors
-    stream.on('error', (err) => {
-      console.error('Stream error:', err);
-      event.sender.send('stream-error', err.message);
-    });
+      stream.on('error', (err) => {
+        log(`[Main Process] executeCommandStream: Stream ERROR for streamId ${capturedStreamId}: ${err.message}`);
+        if (!event.sender.isDestroyed()) {
+            event.sender.send('stream-error', {
+              streamId: capturedStreamId,
+              error: err.message
+            });
+        }
+        activeStreams.delete(capturedStreamId);
+      });
+    })(currentStreamId);
+
+    return { streamId: currentStreamId }; // Acknowledge stream setup
+
   } catch (err) {
-    console.error('Error in executeCommandStream:', err);
-    event.sender.send('stream-error', err.message);
+    log(`[Main Process] executeCommandStream: CATCH block error for streamId ${currentStreamId}: ${err.message}`);
+    if (event.sender && !event.sender.isDestroyed()) {
+        event.sender.send('stream-error', {
+          streamId: currentStreamId, // The ID it was trying to use
+          error: `Failed to set up stream: ${err.message}`
+        });
+    }
+    return { error: `Failed to set up stream: ${err.message}`, streamId: currentStreamId };
   }
 });
-// To these:
+
+
 ipcMain.handle('get-attachment', async (event, attachmentId) => {
   const response = await fetch(`http://127.0.0.1:5337/api/attachment/${attachmentId}`);
   return response.json();

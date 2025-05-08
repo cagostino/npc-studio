@@ -8,7 +8,7 @@ import NPCTeamMenu from './NPCTeamMenu';
 import PhotoViewer from './PhotoViewer';
 import ToolMenu from './ToolMenu';
 import '../../index.css';
-
+import MarkdownRenderer from './MarkdownRenderer';
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 const normalizePath = (path) => {
@@ -87,6 +87,10 @@ const ChatInterface = () => {
     const listenersAttached = useRef(false);
     const initialLoadComplete = useRef(false);
     const [directoryConversations, setDirectoryConversations] = useState([]);
+    const [isStreaming, setIsStreaming] = useState(false);
+    const streamIdRef = useRef(null); // To keep track of the current stream's ID
+
+
 
     const directoryConversationsRef = useRef(directoryConversations);
     useEffect(() => {
@@ -494,73 +498,311 @@ const ChatInterface = () => {
         }
     };
 
+    // In ChatInterface.js
+
+    // Replace your existing useEffect for stream listeners with this one:
     useEffect(() => {
-        if (config?.stream && !listenersAttached.current) {
-            const handleStreamData = (_, chunk) => {
+        console.log('[REACT] Stream listener useEffect: Checking conditions. Config loaded:', !!config, 'Config stream enabled:', config?.stream, 'Listeners already attached:', listenersAttached.current);
+
+        if (config && config.stream && !listenersAttached.current) {
+            console.log('[REACT] Stream listener useEffect: ATTACHING listeners.');
+            const handleStreamData = (_, { streamId: incomingStreamId, chunk }) => {
+                console.log(`[REACT] RAW handleStreamData: incomingStreamId=${incomingStreamId}, currentStreamIdRef=${streamIdRef.current}, chunk PRESENT: ${!!chunk}`);
+                if (chunk) {
+                     console.log(`[REACT] RAW chunk content (first 100 chars): ${chunk.substring(0,100)}`);
+                }
+            
+                if (streamIdRef.current !== incomingStreamId) {
+                    console.warn(`[REACT] handleStreamData: Mismatched stream ID. Expected ${streamIdRef.current}, got ${incomingStreamId}. Ignoring chunk.`);
+                    return;
+                }
+                
                 try {
-                    const cleanedChunk = chunk.replace(/^data: /, '').trim();
-                    if (!cleanedChunk || cleanedChunk === '[DONE]') return;
-                    const parsedChunk = JSON.parse(cleanedChunk);
-                    if (parsedChunk.choices?.length > 0) {
-                        const content = parsedChunk.choices[0].delta?.content;
-                        if (content) {
-                            setMessages(prev => {
-                                const last = prev[prev.length - 1];
-                                if (last?.role === 'assistant') {
-                                     return [...prev.slice(0, -1), { ...last, content: (last.content || '') + content }];
-                                } else {
-                                     return prev;
-                                }
-                            });
+                    let content = '';
+                    let reasoningContent = '';
+                    let toolCalls = null;
+                    
+                    if (typeof chunk === 'string') {
+                        if (chunk.startsWith('data:')) {
+                            const dataContent = chunk.replace(/^data:\s*/, '').trim();
+                            if (dataContent === '[DONE]') {
+                                console.log('[REACT] handleStreamData: Received [DONE] signal for stream:', incomingStreamId);
+                                return;
+                            }
+                            if (dataContent) {
+                                const parsed = JSON.parse(dataContent);
+                                content = parsed.choices?.[0]?.delta?.content || '';
+                                reasoningContent = parsed.choices?.[0]?.delta?.reasoning_content || '';
+                                toolCalls = parsed.tool_calls || null;
+                            }
+                        } else {
+                            content = chunk;
                         }
+                    } else if (chunk && chunk.choices) {
+                        content = chunk.choices[0]?.delta?.content || '';
+                        reasoningContent = chunk.choices[0]?.delta?.reasoning_content || '';
+                        toolCalls = chunk.tool_calls || null;
                     }
-                } catch (error) {
-                    console.error('Error parsing stream chunk:', error, 'Raw chunk:', chunk);
+            
+                    // Process and update message with content
+                    if (content || reasoningContent || toolCalls) {
+                        console.log('[REACT] handleStreamData: Appending content:', content.substring(0, 50) + "...");
+                        if (reasoningContent) {
+                            console.log('[REACT] handleStreamData: Appending reasoning content:', reasoningContent.substring(0, 50) + "...");
+                        }
+                        if (toolCalls) {
+                            console.log('[REACT] handleStreamData: Received tool calls:', JSON.stringify(toolCalls).substring(0, 50) + "...");
+                        }
+                        
+                        setMessages(prev => {
+                            const msgIndex = prev.findIndex(m => m.id === incomingStreamId && m.role === 'assistant');
+                            if (msgIndex !== -1) {
+                                const newMessages = [...prev];
+                                newMessages[msgIndex] = {
+                                    ...newMessages[msgIndex],
+                                    content: (newMessages[msgIndex].content || '') + content,
+                                    reasoningContent: (newMessages[msgIndex].reasoningContent || '') + reasoningContent,
+                                    toolCalls: toolCalls ? 
+                                        (newMessages[msgIndex].toolCalls || []).concat(toolCalls) : 
+                                        newMessages[msgIndex].toolCalls
+                                };
+                                return newMessages;
+                            }
+                            console.warn('[REACT] handleStreamData: Assistant placeholder message not found for streamId:', incomingStreamId);
+                            return prev;
+                        });
+                    }
+                } catch (err) {
+                    console.error('[REACT] handleStreamData: Error processing stream chunk:', err, 'Raw chunk:', chunk);
                 }
             };
-            const handleStreamComplete = () => console.log('Stream complete');
-            const handleStreamError = (_, error) => {
-                console.error('Stream error:', error);
-                setMessages(prev => [...prev, { role: 'assistant', content: `Stream Error: ${error}`, timestamp: new Date().toISOString(), type: 'error', model: currentModel, npc: currentNPC }]);
-            };
-            window.api.onStreamData(handleStreamData);
-            window.api.onStreamComplete(handleStreamComplete);
-            window.api.onStreamError(handleStreamError);
-            listenersAttached.current = true;
-        }
-    }, [config?.stream, currentModel, currentNPC]);
 
+            
+            const handleStreamComplete = (_, { streamId: completedStreamId } = {}) => {
+                console.log(`[REACT] handleStreamComplete: streamId=${completedStreamId}, currentStreamIdRef=${streamIdRef.current}`);
+                if (streamIdRef.current === completedStreamId) {
+                    setIsStreaming(false);
+                    streamIdRef.current = null;
+                    setMessages(prev => prev.map(msg => 
+                        msg.id === completedStreamId ? { ...msg, streamId: null } : msg
+                    ));
+                } else if (completedStreamId) {
+                    console.warn(`[REACT] handleStreamComplete: Stream ${completedStreamId} completed, but current active stream is ${streamIdRef.current || 'null'}.`);
+                } else {
+                    console.warn(`[REACT] handleStreamComplete: Event received without a streamId. Current active: ${streamIdRef.current || 'null'}. Assuming current stream ended.`);
+                     if (streamIdRef.current) {
+                        const currentActiveStreamId = streamIdRef.current;
+                        setIsStreaming(false);
+                        streamIdRef.current = null;
+                        setMessages(prev => prev.map(msg => 
+                            msg.id === currentActiveStreamId ? { ...msg, streamId: null } : msg
+                        ));
+                    }
+                }
+            };
+    
+            const handleStreamError = (_, { streamId: errorStreamId, error } = {}) => {
+                console.error(`[REACT] handleStreamError: streamId=${errorStreamId}, currentStreamIdRef=${streamIdRef.current}, error=${error}`);
+                if (streamIdRef.current === errorStreamId) {
+                    setIsStreaming(false);
+                    streamIdRef.current = null;
+                }
+                setMessages(prev => {
+                    const msgIndex = prev.findIndex(m => m.id === errorStreamId && m.role === 'assistant');
+                    if (msgIndex !== -1) {
+                        const updatedMessages = [...prev];
+                        updatedMessages[msgIndex] = {
+                            ...updatedMessages[msgIndex],
+                            content: (updatedMessages[msgIndex].content || '') + `\n[STREAM ERROR: ${error}]`,
+                            type: 'error',
+                            streamId: null
+                        };
+                        return updatedMessages;
+                    }
+                    return [...prev, { 
+                        id: generateId(), 
+                        role: 'assistant', 
+                        content: `[STREAM ERROR (streamId ${errorStreamId || 'unknown'}): ${error}]`, 
+                        timestamp: new Date().toISOString(), 
+                        type: 'error' 
+                    }];
+                });
+            };
+    
+            const cleanupStreamData = window.api.onStreamData(handleStreamData);
+            const cleanupStreamComplete = window.api.onStreamComplete(handleStreamComplete);
+            const cleanupStreamError = window.api.onStreamError(handleStreamError);
+            
+            listenersAttached.current = true;
+            console.log('[REACT] Stream listener useEffect: Stream listeners ATTACHED.');
+    
+            return () => {
+                console.log('[REACT] Stream listener useEffect: CLEANING UP listeners.');
+                cleanupStreamData();
+                cleanupStreamComplete();
+                cleanupStreamError();
+                listenersAttached.current = false;
+            };
+        } else {
+            if (!config) console.log('[REACT] Stream listener useEffect: Not attaching, config is null.');
+            else if (!config.stream) console.log('[REACT] Stream listener useEffect: Not attaching, config.stream is false.');
+            else if (listenersAttached.current) console.log('[REACT] Stream listener useEffect: Not attaching, listeners already attached (this should not happen if logic is correct).');
+        }
+    }, [config]);
+
+
+    // Replace your existing handleInputSubmit function with this one:
     const handleInputSubmit = async (e) => {
         e.preventDefault();
-        if ((!input.trim() && uploadedFiles.length === 0) || !activeConversationId) return;
+        console.log(`[REACT] handleInputSubmit: Entry. isStreaming=${isStreaming}, input="${input.trim().substring(0,20)}...", activeConversationId=${activeConversationId}, uploadedFiles=${uploadedFiles.length}`);
+
+        if (isStreaming || (!input.trim() && uploadedFiles.length === 0) || !activeConversationId) {
+            console.warn('[REACT] handleInputSubmit: Submission blocked.');
+            return;
+        }
+    
+        const currentInputVal = input; 
+        const currentAttachmentsVal = [...uploadedFiles]; 
+        const newStreamId = generateId();
+    
+        console.log(`[REACT] handleInputSubmit: Setting streamIdRef.current to ${newStreamId}`);
+        streamIdRef.current = newStreamId;
+        
+        console.log(`[REACT] handleInputSubmit: Calling setIsStreaming(true). Current isStreaming state before call: ${isStreaming}`);
+        setIsStreaming(true);
+    
+        console.log(`[REACT] handleInputSubmit: Preparing to send stream ${newStreamId} for input: "${currentInputVal.substring(0,50)}..."`);
+    
         try {
-            const attachmentsData = uploadedFiles.map(file => ({
-                name: file.name, path: file.path, size: file.size, type: file.type
-            }));
             const userMessage = {
-                role: 'user', content: input, timestamp: new Date().toISOString(), type: 'message', model: 'user', npc: currentNPC, attachments: attachmentsData
+                id: generateId(),
+                role: 'user',
+                content: currentInputVal,
+                timestamp: new Date().toISOString(),
+                attachments: currentAttachmentsVal.map(f => ({ name: f.name, type: f.type, size: f.size }))
             };
-            setMessages(prev => [...prev, userMessage]);
-            const currentInput = input;
-            setInput('');
-            setUploadedFiles([]);
-            setMessages(prev => [...prev, { role: 'assistant', content: '', timestamp: new Date().toISOString(), type: 'message', model: currentModel, npc: currentNPC }]);
-            await window.api.executeCommandStream({
-                commandstr: currentInput, currentPath: currentPath, conversationId: activeConversationId, model: currentModel || config?.model || 'llama3.2', npc: currentNPC || config?.npc || 'sibiji', attachments: attachmentsData
+    
+            const assistantPlaceholderMessage = {
+                id: newStreamId, 
+                role: 'assistant',
+                content: '', 
+                reasoningContent: '',
+                toolCalls: [],
+                timestamp: new Date().toISOString(),
+                streamId: newStreamId, 
+                model: currentModel,
+                npc: currentNPC
+            };
+            setMessages(prev => [...prev, userMessage, assistantPlaceholderMessage]);
+            setInput(''); 
+            setUploadedFiles([]); 
+    
+            console.log(`[REACT] handleInputSubmit: Calling window.api.executeCommandStream with streamId ${newStreamId}. State updated for UI.`);
+            
+            const result = await window.api.executeCommandStream({
+                commandstr: currentInputVal,
+                currentPath,
+                conversationId: activeConversationId,
+                model: currentModel,
+                npc: currentNPC,
+                attachments: currentAttachmentsVal.map(file => ({
+                    name: file.name, path: file.path, size: file.size, type: file.type
+                })),
+                streamId: newStreamId
             });
+    
+            if (result && result.error) {
+                console.error(`[REACT] handleInputSubmit: executeCommandStream returned an error immediately for streamId ${result.streamId || newStreamId}: ${result.error}`);
+                throw new Error(result.error);
+            } else if (result && result.streamId === newStreamId) {
+                console.log(`[REACT] handleInputSubmit: executeCommandStream call acknowledged for streamId ${newStreamId}. Waiting for data...`);
+            } else {
+                console.warn(`[REACT] handleInputSubmit: executeCommandStream call returned unexpected result:`, result);
+            }
+    
         } catch (err) {
-            console.error('Error submitting input:', err);
+            console.error('[REACT] handleInputSubmit: CATCH block. Error:', err.message);
+            if (streamIdRef.current === newStreamId) {
+                 console.log(`[REACT] handleInputSubmit: CATCH block. Clearing streamIdRef for ${newStreamId}.`);
+                 streamIdRef.current = null;
+            }
+            setIsStreaming(false); 
+            
             setMessages(prev => {
-                const lastMessage = prev[prev.length -1];
-                if (lastMessage?.role === 'assistant' && lastMessage.content === '') {
-                    return prev.slice(0, -1);
+                const msgIndex = prev.findIndex(m => m.id === newStreamId && m.role === 'assistant');
+                if (msgIndex !== -1) {
+                    const updatedMessages = [...prev];
+                    updatedMessages[msgIndex] = {
+                        ...updatedMessages[msgIndex],
+                        content: (updatedMessages[msgIndex].content || '') + `\n[Error during submission: ${err.message}]`,
+                        type: 'error',
+                        streamId: null
+                    };
+                    return updatedMessages;
                 }
-                return prev;
+                return [...prev, {
+                    id: generateId(), role: 'assistant',
+                    content: `[Error during submission: ${err.message}]`,
+                    timestamp: new Date().toISOString(), type: 'error'
+                }];
             });
-             setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}`, timestamp: new Date().toISOString(), type: 'error', npc: currentNPC || config?.npc || 'sibiji', model: currentModel }]);
         }
     };
 
+    const handleInterruptStream = async () => {
+        // Only proceed if currently streaming and have a stream ID
+        if (isStreaming && streamIdRef.current) {
+            const streamIdToInterrupt = streamIdRef.current; // Capture ID before clearing
+            console.log(`[REACT] handleInterruptStream: Attempting to interrupt stream: ${streamIdToInterrupt}`);
+
+            // --- IMMEDIATE UI UPDATE ---
+            // Stop global streaming state FIRST for instant feedback
+            setIsStreaming(false);
+            // Clear the ref so new data for this ID is ignored even before API call finishes
+            streamIdRef.current = null;
+            // Update the specific message to indicate interruption
+            setMessages(prev => {
+                const newMessages = [...prev];
+                const msgIndex = newMessages.findIndex(m => m.id === streamIdToInterrupt && m.role === 'assistant');
+                if (msgIndex !== -1) {
+                    newMessages[msgIndex] = {
+                        ...newMessages[msgIndex],
+                        content: (newMessages[msgIndex].content || '') + "\n\n[Stream Interrupted by User]",
+                        isStreaming: false, // Mark message as not streaming
+                        streamId: null      // Clear streamId from message
+                    };
+                    console.log(`[REACT] handleInterruptStream: Updated message ${streamIdToInterrupt} UI for interruption.`);
+                } else {
+                    console.warn(`[REACT] handleInterruptStream: Placeholder message not found for interrupted stream ${streamIdToInterrupt}.`);
+                    // Optionally add a system message if needed
+                    // newMessages.push({ /* ... system message ... */ });
+                }
+                return newMessages;
+            });
+            // --- END IMMEDIATE UI UPDATE ---
+
+
+            // --- Call Backend API ---
+            try {
+                await window.api.interruptStream(streamIdToInterrupt);
+                console.log(`[REACT] handleInterruptStream: API call to interrupt stream ${streamIdToInterrupt} successful.`);
+            } catch (error) {
+                console.error(`[REACT] handleInterruptStream: API call to interrupt stream ${streamIdToInterrupt} failed:`, error);
+                // Optionally update the message again to show interruption attempt failed
+                setMessages(prev => prev.map(msg =>
+                    msg.id === streamIdToInterrupt
+                        ? { ...msg, content: msg.content + " [Interruption Attempt Failed]" }
+                        : msg
+                ));
+            }
+            // No 'finally' block needed here as state is updated optimistically above
+        } else {
+            console.warn(`[REACT] handleInterruptStream: Called when not streaming or streamIdRef is null. isStreaming=${isStreaming}, streamIdRef=${streamIdRef.current}`);
+        }
+    };
+
+    
+    
     const deleteSelectedConversations = async () => {
         const selectedIds = Array.from(selectedConvos);
         if (selectedIds.length === 0) return;
@@ -792,7 +1034,9 @@ const ChatInterface = () => {
             </div>
         </div>
     );
+// In ChatInterface.js
 
+    // Replace the entire renderChatView function with this corrected version:
     const renderChatView = () => (
         <div className="flex-1 flex flex-col min-h-0">
             <div className="p-2 border-b border-gray-700 text-xs text-gray-500 flex-shrink-0">
@@ -800,69 +1044,174 @@ const ChatInterface = () => {
                 <div>Messages Count: {messages.length}</div>
                 <div>Current Path: {currentPath}</div>
             </div>
+
             <div className="flex-1 overflow-y-auto space-y-4 p-4">
+                {/* Prompt Modal Rendering */}
                 {promptModal.isOpen && (
-                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-40 p-4">
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-40 p-4">
                         <div className="bg-gray-800 p-6 border border-gray-700 rounded-lg shadow-xl max-w-lg w-full">
                             <h3 className="text-lg font-medium mb-3">{promptModal.title}</h3>
                             <p className="text-gray-400 mb-4 text-sm">{promptModal.message}</p>
-                            <textarea className="w-full h-48 bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-gray-100 font-mono text-sm" defaultValue={promptModal.defaultValue} id="promptInputModal" autoFocus/>
+                            <textarea
+                                className="w-full h-48 bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-gray-100 font-mono text-sm"
+                                defaultValue={promptModal.defaultValue}
+                                id="promptInputModal"
+                                autoFocus
+                            />
                             <div className="flex justify-end gap-3">
-                                <button className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm" onClick={() => setPromptModal({ ...promptModal, isOpen: false })}>Cancel</button>
-                                <button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm" onClick={() => { const value = document.getElementById('promptInputModal').value; promptModal.onConfirm?.(value); setPromptModal({ ...promptModal, isOpen: false }); }}>OK</button>
+                                <button
+                                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+                                    onClick={() => setPromptModal({ ...promptModal, isOpen: false })}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
+                                    onClick={() => {
+                                        const value = document.getElementById('promptInputModal').value;
+                                        promptModal.onConfirm?.(value);
+                                        setPromptModal({ ...promptModal, isOpen: false });
+                                    }}
+                                >
+                                    OK
+                                </button>
                             </div>
                         </div>
                     </div>
                 )}
+
+                {/* Conditional Rendering for No Conversation or No Messages */}
                 {!activeConversationId ? (
-                     <div className="flex items-center justify-center h-full text-gray-500">Select or create a conversation</div>
+                    <div className="flex items-center justify-center h-full text-gray-500">
+                        Select or create a conversation
+                    </div>
                 ) : messages.length === 0 ? (
-                     <div className="text-center text-gray-500 pt-10">No messages in this conversation</div>
+                    <div className="text-center text-gray-500 pt-10">
+                        No messages in this conversation
+                    </div>
                 ) : (
-                    messages.map((message, index) => (
-                        <div key={message.id || index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
-                             <div className={`flex flex-col space-y-1 max-w-[85%] ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                <div className="text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity px-1">
-                                    {message.role === 'user' ? '$ ' : '> '}
-                                    {message.timestamp && new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    {message.model && ` - ${message.model}`} {message.npc && `(${message.npc})`}
-                                </div>
-                                <div className={`p-3 rounded-lg ${message.role === 'user' ? 'bg-blue-900 text-white' : 'bg-gray-800'}`}>
-                                    <div className="whitespace-pre-wrap font-mono text-sm break-words">
-                                        <div dangerouslySetInnerHTML={{ __html: message.content }} />
+                    /* Message List Mapping - Corrected */
+                    messages.map((message) => {
+                        const showStreamingIndicators = !!message.isStreaming;
+                        
+                        return (
+                            <div
+                                key={message.id ?? message.timestamp}
+                                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                            >
+                                <div className={`max-w-[85%] rounded-lg p-3 ${
+                                    message.role === 'user'
+                                        ? 'bg-blue-800 text-white'
+                                        : 'bg-gray-800 text-gray-200'
+                                    } ${message.type === 'error' ? 'bg-red-900 border border-red-700' : ''}`}
+                                >
+                                    {/* Message header */}
+                                    <div className="text-xs text-gray-400 mb-1 opacity-80">
+                                        {message.role === 'user' ? 'You' : (message.npc || message.model || 'Assistant')}
+                                        <span className="ml-2">
+                                            {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
                                     </div>
-                                    {message.attachments && message.attachments.length > 0 && (
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                            {message.attachments.map((attachment, idx) => (
-                                                <div key={idx} className="text-xs bg-gray-700 rounded px-2 py-1">
-                                                    📎 {attachment.name}
-                                                    {attachment.data && (<img src={attachment.data} alt={attachment.name} className="mt-2 max-w-[200px] max-h-[200px] rounded-md"/> )}
+                    
+                                    {/* Message content Area */}
+                                    <div className="relative message-content-area">
+                                        {/* Bouncing dots shown above the message only when streaming */}
+                                        {showStreamingIndicators && (
+                                            <div className="absolute top-0 left-0 -translate-y-full flex space-x-1 mb-1">
+                                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
+                                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
+                                                <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
+                                            </div>
+                                        )}
+                    
+                                        {/* Reasoning Content (Thoughts) Section */}
+                                        {message.reasoningContent && (
+                                            <div className="mb-3 px-3 py-2 bg-gray-700 rounded-md border-l-2 border-yellow-500">
+                                                <div className="text-xs text-yellow-400 mb-1 font-semibold">Thinking Process:</div>
+                                                <div className="prose prose-sm prose-invert max-w-none text-gray-300 text-sm">
+                                                    <MarkdownRenderer content={message.reasoningContent || ''} />
                                                 </div>
-                                            ))}
+                                            </div>
+                                        )}
+                    
+                                        {/* Main Content */}
+                                        <div className="prose prose-sm prose-invert max-w-none">
+                                            <MarkdownRenderer content={message.content || ''} />
+                                            {showStreamingIndicators && message.type !== 'error' && (
+                                                <span className="ml-1 inline-block w-0.5 h-4 bg-gray-300 animate-pulse stream-cursor"></span>
+                                            )}
                                         </div>
-                                    )}
+                    
+                                        {/* Tool Calls Section */}
+                                        {message.toolCalls && message.toolCalls.length > 0 && (
+                                            <div className="mt-3 px-3 py-2 bg-gray-700 rounded-md border-l-2 border-blue-500">
+                                                <div className="text-xs text-blue-400 mb-1 font-semibold">Function Calls:</div>
+                                                {message.toolCalls.map((tool, idx) => (
+                                                    <div key={idx} className="mb-2 last:mb-0">
+                                                        <div className="text-blue-300 text-sm">
+                                                            {tool.function_name || tool.function?.name || "Function"}
+                                                        </div>
+                                                        <pre className="bg-gray-900 p-2 rounded text-xs overflow-x-auto my-1">
+                                                            {JSON.stringify(
+                                                                tool.arguments || tool.function?.arguments || {}, 
+                                                                null, 2
+                                                            )}
+                                                        </pre>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                    
+                                        {/* Attachments */}
+                                        {message.attachments?.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-2 border-t border-gray-700 pt-2">
+                                                {message.attachments.map((attachment, idx) => (
+                                                    <div key={idx} className="text-xs bg-gray-700 rounded px-2 py-1 flex items-center gap-1">
+                                                        <Paperclip size={12} className="flex-shrink-0" />
+                                                        <span className="truncate" title={attachment.name}>{attachment.name}</span>
+                                                        {/* Add image preview if data exists and is an image */}
+                                                        {attachment.data && attachment.name?.match(/\.(jpg|jpeg|png|gif|webp)$/i) && (
+                                                            <img
+                                                                src={attachment.data} // Assuming base64 data URL
+                                                                alt={attachment.name}
+                                                                className="mt-1 max-w-[100px] max-h-[100px] rounded-md object-cover"
+                                                            />
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div> {/* End message-content-area */}
                                 </div>
                             </div>
-                        </div>
-                    ))
-                )}
-            </div>
+                        );
+                    })
 
+                     /* End messages.map */
+                )}
+            </div> {/* End message list container */}
+
+            {/* Uploaded files preview */}
             {uploadedFiles.length > 0 && (
-                <div className="px-4 pt-2 flex gap-2 flex-wrap border-t border-gray-700 max-h-28 overflow-y-auto bg-gray-800 flex-shrink-0">
+                 <div className="px-4 pt-2 flex gap-2 flex-wrap border-t border-gray-700 max-h-28 overflow-y-auto bg-gray-800 flex-shrink-0">
                     {uploadedFiles.map(file => (
                         <div key={file.id} className="relative flex-shrink-0 mb-2">
                             <img
-                                src={file.preview || `file://${file.path}`}
+                                src={file.preview || `file://${file.path}`} // Use file protocol for local paths if no preview
                                 alt={file.name}
                                 className="w-16 h-16 object-cover rounded border border-gray-600"
+                                // Add error handling for broken images if needed
+                                onError={(e) => { e.target.style.display = 'none'; /* Hide broken image icon */ }}
                             />
                             <button
-                                onClick={() => { setUploadedFiles(prev => prev.filter(f => f.id !== file.id)); if (file.preview) URL.revokeObjectURL(file.preview); }}
-                                className="absolute -top-1 -right-1 bg-red-600 hover:bg-red-500 text-white rounded-full p-0.5 leading-none"
+                                onClick={() => {
+                                    setUploadedFiles(prev => prev.filter(f => f.id !== file.id));
+                                    if (file.preview) URL.revokeObjectURL(file.preview);
+                                }}
+                                className="absolute -top-1 -right-1 bg-red-600 hover:bg-red-500 text-white rounded-full p-0.5 leading-none flex items-center justify-center w-4 h-4"
                                 aria-label="Remove file"
                             >
-                                <X size={10} strokeWidth={3}/>
+                                <X size={10} strokeWidth={3} />
                             </button>
                         </div>
                     ))}
@@ -873,17 +1222,18 @@ const ChatInterface = () => {
         </div>
     );
 
+
     const renderInputArea = () => (
         <div className="px-4 pt-2 pb-3 border-t border-gray-700 bg-gray-800 flex-shrink-0">
             <div
-                className="relative bg-gray-900 border border-gray-700 rounded-lg group" // Added group for potential hover effects
-                onDragOver={(e) => { e.preventDefault(); setIsHovering(true); }} // Prevent default to allow drop
+                className="relative bg-gray-900 border border-gray-700 rounded-lg group"
+                onDragOver={(e) => { e.preventDefault(); setIsHovering(true); }}
                 onDragEnter={() => setIsHovering(true)}
                 onDragLeave={() => setIsHovering(false)}
                 onDrop={(e) => {
-                    e.preventDefault(); // Prevent browser from opening file
+                    e.preventDefault();
                     setIsHovering(false);
-                    handleDrop(e); // Use existing handleDrop logic
+                    handleDrop(e);
                 }}
             >
                 {isHovering && (
@@ -892,8 +1242,8 @@ const ChatInterface = () => {
                     </div>
                 )}
 
-                <form onSubmit={handleInputSubmit} className="flex items-end p-2 gap-2 relative z-0"> {/* Ensure form is below indicator if needed */}
-                    {/* Hidden file input */}
+                {/* Form is still used for structure, but submit button is conditional */}
+                <div className="flex items-end p-2 gap-2 relative z-0"> {/* Changed from form to div to avoid accidental submission while streaming */}
                     <input
                         ref={fileInputRef}
                         type="file"
@@ -902,45 +1252,77 @@ const ChatInterface = () => {
                         multiple
                         accept="image/*, text/*, application/pdf, .py, .js, .jsx, .ts, .tsx, .html, .css, .json, .md"
                     />
-                    {/* Textarea */}
                     <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleInputSubmit(e); } }}
-                        placeholder="Type a message or drop files..." // Update placeholder
-                        className="flex-grow bg-[#0b0c0f] text-sm text-gray-300 rounded-lg px-4 py-3 placeholder-gray-600 focus:outline-none border-0 min-h-[56px] max-h-[200px] resize-none"
+                        onKeyDown={(e) => {
+                            if (!isStreaming && e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleInputSubmit(e); // Use form handler logic
+                            }
+                        }}
+                        placeholder={isStreaming ? "Streaming response..." : "Type a message or drop files..."}
+                        className={`flex-grow bg-[#0b0c0f] text-sm text-gray-300 rounded-lg px-4 py-3 placeholder-gray-600 focus:outline-none border-0 min-h-[56px] max-h-[200px] resize-none ${isStreaming ? 'opacity-70 cursor-not-allowed' : ''}`}
                         rows={1}
                         style={{ overflowY: 'auto' }}
+                        disabled={isStreaming} // Disable input while streaming
                     />
-                    {/* Attach button */}
                     <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="p-2 text-gray-400 hover:text-gray-200 rounded-lg hover:bg-gray-700 flex-shrink-0"
+                        className={`p-2 text-gray-400 hover:text-gray-200 rounded-lg hover:bg-gray-700 flex-shrink-0 ${isStreaming ? 'opacity-50 cursor-not-allowed' : ''}`}
                         aria-label="Attach file"
+                        disabled={isStreaming} // Disable attach while streaming
                     >
                         <Paperclip size={20} />
                     </button>
-                    {/* Send button */}
-                    <button
-                        type="submit"
-                        disabled={!input.trim() && uploadedFiles.length === 0}
-                        className="bg-green-600 hover:bg-green-500 text-white rounded-lg px-4 py-2 text-sm flex items-center gap-1 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+
+                    {/* Conditional Stop/Send Button */}
+                    {isStreaming ? (
+                        <button
+                            type="button"
+                            onClick={handleInterruptStream} // Call the interrupt handler
+                            className="bg-red-600 hover:bg-red-500 text-white rounded-lg px-4 py-2 text-sm flex items-center justify-center gap-1 flex-shrink-0 w-[76px] h-[40px]" // Fixed width/height for consistency
+                            aria-label="Stop generating"
+                            title="Stop generating"
+                        >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5z"/>
+                            </svg>
+                        </button>
+                    ) : (
+                        <button
+                            type="button" // Changed from submit since we handle via handleInputSubmit on Enter/Click
+                            onClick={handleInputSubmit} // Call submit handler on click too
+                            disabled={(!input.trim() && uploadedFiles.length === 0) || !activeConversationId}
+                            className="bg-green-600 hover:bg-green-500 text-white rounded-lg px-4 py-2 text-sm flex items-center justify-center gap-1 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed w-[76px] h-[40px]" // Fixed width/height
+                        >
+                            <Send size={16}/>
+                        </button>
+                    )}
+                </div>
+
+                {/* Model/NPC Selectors */}
+                <div className={`flex items-center gap-2 px-2 pb-2 ${isStreaming ? 'opacity-50' : ''}`}>
+                    <select
+                        value={currentModel || ''}
+                        onChange={e => setCurrentModel(e.target.value)}
+                        className="bg-gray-800 text-xs rounded px-2 py-1 border border-gray-700 flex-grow disabled:cursor-not-allowed"
+                        disabled={modelsLoading || !!modelsError || isStreaming} // Disable while streaming
                     >
-                        <Send size={16}/>
-                    </button>
-                </form>
-
-
-                <div className="flex items-center gap-2 px-2 pb-2">
-                    <select value={currentModel || ''} onChange={e => setCurrentModel(e.target.value)} className="bg-gray-800 text-xs rounded px-2 py-1 border border-gray-700 flex-grow" disabled={modelsLoading || !!modelsError}>
                         {modelsLoading && <option value="">Loading...</option>}
                         {modelsError && <option value="">Error</option>}
                         {!modelsLoading && !modelsError && availableModels.length === 0 && (<option value="">No models</option> )}
                         {!modelsLoading && !modelsError && availableModels.map(model => (<option key={model.value} value={model.value}>{model.display_name}</option>))}
                     </select>
-                    <select value={currentNPC || config?.npc || 'sibiji'} onChange={e => setCurrentNPC(e.target.value)} className="bg-gray-800 text-xs rounded px-2 py-1 border border-gray-700 flex-grow">
+                    <select
+                        value={currentNPC || config?.npc || 'sibiji'}
+                        onChange={e => setCurrentNPC(e.target.value)}
+                        className="bg-gray-800 text-xs rounded px-2 py-1 border border-gray-700 flex-grow disabled:cursor-not-allowed"
+                        disabled={isStreaming} // Disable while streaming
+                    >
                         <option value="sibiji">NPC: sibiji </option>
+                        {/* Add other NPCs if available */}
                     </select>
                 </div>
             </div>

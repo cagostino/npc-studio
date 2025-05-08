@@ -34,9 +34,23 @@ contextBridge.exposeInMainWorld('api', {
         npc: data.npc,
     }),
     executeCommandStream: (data) => ipcRenderer.invoke('executeCommandStream', data),
-    onStreamData: (callback) => ipcRenderer.on('stream-data', callback),
+    onStreamData: (callback) => {
+        // The callback will receive (event, { streamId, chunk })
+        ipcRenderer.on('stream-data', callback);
+        return () => ipcRenderer.removeListener('stream-data', callback);
+    },
+    
     onStreamComplete: (callback) => ipcRenderer.on('stream-complete', callback),
     onStreamError: (callback) => ipcRenderer.on('stream-error', callback),
+    interruptStream: async (streamIdToInterrupt) => {
+        try {
+            await ipcRenderer.invoke('interruptStream', streamIdToInterrupt);
+            console.log('Stream interrupted successfully');
+        } catch (error) {
+            console.error('Error interrupting stream:', error);
+            throw error;
+        }
+    },
 
 
 

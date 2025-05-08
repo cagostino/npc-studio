@@ -52,7 +52,6 @@
         "to": "assets"
       }
     ]
-  
   },
   "dependencies": {
     "@headlessui/react": "^2.2.0",
@@ -66,11 +65,13 @@
     "path": "^0.12.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-markdown": "^9.0.3",
+    "react-markdown": "^9.1.0",
+    "react-syntax-highlighter": "^15.6.1",
     "remark-gfm": "^4.0.1",
     "sqlite3": "^5.0.2"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.16",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "electron": "^25.9.8",
