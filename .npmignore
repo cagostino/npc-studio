@@ -1,0 +1,45 @@
+# Build artifacts
+build/npc_studio_serve/
+build/icons/mac/
+build/icons/win/
+build/icons/png/
+dist-electron/
+pyinstaller_dist/
+resources/backend/
+
+# Python-related
+*.py
+*.pyc
+__pycache__/
+*.spec
+*_serve.py
+npc_studio_serve*
+venv/
+
+# Only include necessary dist files
+dist/*
+!dist/index.html
+!dist/assets/
+
+# Large files
+*.AppImage
+*.deb
+*.tgz
+*.tar.gz
+*.zip
+*.pkg
+*.pyz
+
+# Git related
+.git/
+.github/
+.gitignore
+
+# Misc development files
+node_modules/
+*.log
+gh_images/
+
+# Editor directories
+.idea/
+.vscode/

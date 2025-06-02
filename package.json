@@ -1,9 +1,20 @@
 {
-  "name": "npc-studio",
-  "version": "1.0.0",
+  "name": "npc-stu",
+  "version": "0.0.5",
   "description": "The premier interface for the npcsh interpreter.",
   "author": "Chris Agostino <info@npcworldwi.de>",
   "main": "src/main.js",
+  "bin": {
+    "npc-stu": "./bin/cli.js"
+  },
+  "files": [
+    "bin/cli.js",
+    "dist/index.html",
+    "dist/assets/",
+    "src/",
+    "scripts/postinstall.js",
+    "assets/icon.png"
+  ],
   "scripts": {
     "generate-icons": "electron-icon-builder --input=./assets/icon.png --output=./build",
     "start": "NODE_ENV=development electron .",
@@ -12,13 +23,14 @@
     "build": "npm run build:vite && electron-builder",
     "preview": "vite preview",
     "rebuild": "electron-rebuild",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "node scripts/postinstall.js",
     "electron:build": "electron-builder",
-    "pack": "npm run build && npm run electron:build"
+    "pack": "npm run build && npm run electron:build",
+    "prepare": "npm run build:vite"
   },
   "build": {
-    "appId": "com.npc_studio.chat",
-    "productName": "npc-studio",
+    "appId": "com.npc_stu.chat",
+    "productName": "npc-stu",
     "files": [
       "dist/**/*",
       "src/**/*",
@@ -58,6 +70,7 @@
     "@supabase/supabase-js": "^2.47.15",
     "better-sqlite3": "^11.8.1",
     "debounce": "^2.0.0",
+    "electron": "^25.9.8",
     "electron-store": "^10.0.1",
     "lucide-react": "^0.471.1",
     "node-fetch": "^2.7.0",
@@ -74,7 +87,6 @@
     "@tailwindcss/typography": "^0.5.16",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
-    "electron": "^25.9.8",
     "electron-builder": "^24.13.1",
     "electron-icon-builder": "^2.0.1",
     "electron-rebuild": "^3.2.9",
@@ -84,5 +96,8 @@
     "supabase": "^2.6.8",
     "tailwindcss": "^3.4.17",
     "vite": "^6.2.1"
+  },
+  "engines": {
+    "node": ">=16"
   }
 }

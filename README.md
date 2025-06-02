@@ -7,7 +7,36 @@
 
 NPC Studio is an AI IDE that lets users have AI conversations, edit files, explore data, execute code, and much more.
 
+## Installation
 
+### NPM Installation (Recommended)
+
+You can install NPC Studio globally via npm:
+
+```bash
+npm install -g npc-stu
+```
+
+After installation, you can run NPC Studio from anywhere with:
+
+```bash
+npc-stu
+```
+When installed via the executables or if you manually build npc-studio yourself, then it will be available as
+```bash
+npc-studio
+```
+This difference in naming between the two is to avoid naming conflicts for those working on development of NPC Studio who want 
+to have a more stable version installed.
+
+
+When running for the first time, you'll be prompted to install Python dependencies. This will create a virtual environment in your home directory under `.npc_studio/venv` and install the required packages.
+
+### Requirements
+
+- Node.js 16 or higher
+- Python 3.8 or higher (for the backend)
+- Ollama (optional, for local models)
 
 ## Chat with Agents and organize by project path
 - NPC Studio gives users the capability to organize their conversations with AI agents in a natural and convenient way. Users can easily change working directories and separate their conversations by project path.
