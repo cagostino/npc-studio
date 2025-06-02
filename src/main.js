@@ -106,7 +106,19 @@ app.whenReady().then(async () => {
 
   try {
     log('Starting backend server...');
-    backendProcess = spawn('npc', ['serve', '-p', '5337'], {
+    // Use the bundled Python executable instead of 'npc serve'
+    const backendPath = app.isPackaged 
+      ? path.join(process.resourcesPath, 'app', 'resources', 'backend', 'npc_studio_serve')
+      : path.join(app.getAppPath(), 'dist', 'resources', 'backend', 'npc_studio_serve');
+    
+    log(`Using backend path: ${backendPath}`);
+    
+    // Make sure it's executable
+    if (app.isPackaged && fs.existsSync(backendPath)) {
+      fs.chmodSync(backendPath, '755');
+    }
+    
+    backendProcess = spawn(backendPath, {
       stdio: 'inherit',
       env: {
         ...process.env,
@@ -125,6 +137,18 @@ app.whenReady().then(async () => {
 
     backendProcess.on('error', (err) => {
       console.error('Failed to start backend server:', err);
+      // Try fallback to npc serve if bundled server fails
+      log('Attempting fallback to npc serve...');
+      backendProcess = spawn('npc', ['serve', '-p', '5337'], {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          CORNERIA_DATA_DIR: dataPath,
+          NPC_STUDIO_PORT: '5337',
+          FLASK_DEBUG: '1',
+          PYTHONUNBUFFERED: '1',
+        },
+      });
     });
     
     // Wait for server to be ready before proceeding
@@ -446,10 +470,21 @@ if (!gotTheLock) {
         }
       });
     });
-    const htmlPath = path.join(app.getAppPath(), 'dist', 'index.html');
-    mainWindow.loadFile(htmlPath)
-    console.log(`Loading from packaged app path: ${htmlPath}`);
-
+    
+    // Check if we're in development mode
+    const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+    
+    if (isDev) {
+      // Load from Vite dev server
+      mainWindow.loadURL('http://localhost:5173');
+      console.log('Loading from Vite dev server: http://localhost:5173');
+    } else {
+      // Load from built files
+      const htmlPath = path.join(app.getAppPath(), 'dist', 'index.html');
+      mainWindow.loadFile(htmlPath);
+      console.log(`Loading from packaged app path: ${htmlPath}`);
+    }
+  
     mainWindow.webContents.openDevTools();
 
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -711,51 +746,43 @@ app.on('will-quit', () => {
     }
     return null;
   });
-  ipcMain.handle('get-tools-global', async () => {
+  ipcMain.handle('get-jinxs-global', async () => {
     try {
-        const response = await fetch('http://127.0.0.1:5337/api/tools/global', {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
+        const response = await fetch('http://127.0.0.1:5337/api/jinxs/global');
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-
-        return await response.json();
+        
+        const data = await response.json();
+        console.log('Global jinxs data:', data); // Log the data
+        return data; // Make sure we're returning the whole response
     } catch (err) {
-        console.error('Error loading global tools:', err);
-        return { error: err.message };
+        console.error('Error loading global jinxs:', err);
+        return { jinxs: [], error: err.message };
     }
 });
 
-ipcMain.handle('get-tools-project', async (event, currentPath) => {
+ipcMain.handle('get-jinxs-project', async (event, currentPath) => {
   try {
-      // Correctly interpolate `currentPath` into the URL
-      const response = await fetch(`http://127.0.0.1:5337/api/tools/project?currentPath=${encodeURIComponent(currentPath)}`, {
-          method: 'GET', // Use GET method
-          headers: {
-              'Content-Type': 'application/json'
-          },
-          // Remove the `body` for GET requests
-      });
-
+      const url = `http://127.0.0.1:5337/api/jinxs/project?currentPath=${encodeURIComponent(currentPath)}`;
+      console.log('Fetching project jinxs from URL:', url);
+      
+      const response = await fetch(url);
       if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
       }
-
-      return await response.json();
+      
+      const data = await response.json();
+      console.log('Project jinxs data:', data); // Log the data
+      return data; // Make sure we're returning the whole response
   } catch (err) {
-      console.error('Error loading project tools:', err);
-      return { error: err.message };
+      console.error('Error loading project jinxs:', err);
+      return { jinxs: [], error: err.message };
   }
 });
-
-ipcMain.handle('save-tool', async (event, data) => {
+  ipcMain.handle('save-jinx', async (event, data) => {
     try {
-        const response = await fetch('http://127.0.0.1:5337/api/tools/save', {
+        const response = await fetch('http://127.0.0.1:5337/api/jinxs/save', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -769,7 +796,7 @@ ipcMain.handle('save-tool', async (event, data) => {
 
         return await response.json();
     } catch (err) {
-        console.error('Error saving tool:', err);
+        console.error('Error saving jinx:', err);
         return { error: err.message };
     }
 });
@@ -798,18 +825,24 @@ ipcMain.handle('executeCommandStream', async (event, data) => {
   try {
     const apiUrl = 'http://127.0.0.1:5337/api/stream';
     log(`[Main Process] executeCommandStream: Fetching from ${apiUrl} for streamId ${currentStreamId}`);
+    
+    // Create the request payload, including the npcSource parameter
+    const payload = {
+      commandstr: data.commandstr,
+      currentPath: data.currentPath,
+      conversationId: data.conversationId,
+      model: data.model,
+      npc: data.npc,
+      npcSource: data.npcSource || 'global', // Add the npcSource parameter (project or global)
+      attachments: data.attachments || []
+    };
+    
+    log(`[Main Process] executeCommandStream: Payload for streamId ${currentStreamId}:`, JSON.stringify(payload));
+    
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        commandstr: data.commandstr,
-        currentPath: data.currentPath,
-        conversationId: data.conversationId,
-        model: data.model,
-        npc: data.npc,
-        attachments: data.attachments || [],
-        // streamId: currentStreamId // Backend doesn't strictly need this if it just streams back
-      }), 
+      body: JSON.stringify(payload)
     });
 
     log(`[Main Process] executeCommandStream: Backend response status for streamId ${currentStreamId}: ${response.status}`);
@@ -1117,7 +1150,7 @@ ipcMain.handle('executeCommand', async (_, data) => {
 
   ipcMain.handle('readDirectoryStructure', async (_, dirPath) => {
     const structure = {};
-    const allowedExtensions = ['.py', '.md', '.js', '.json', '.txt', '.yaml', '.yml', '.html', '.css', '.npc', '.tool'];
+    const allowedExtensions = ['.py', '.md', '.js', '.json', '.txt', '.yaml', '.yml', '.html', '.css', '.npc', '.jinx'];
     //console.log(`[Main Process] readDirectoryStructure called for: ${dirPath}`); // LOG 1
 
     try {

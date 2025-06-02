@@ -6,7 +6,7 @@ import MacroInput from './MacroInput';
 import SettingsMenu from './SettingsMenu';
 import NPCTeamMenu from './NPCTeamMenu';
 import PhotoViewer from './PhotoViewer';
-import ToolMenu from './ToolMenu';
+import JinxMenu from './JinxMenu';
 import '../../index.css';
 import MarkdownRenderer from './MarkdownRenderer';
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -30,7 +30,7 @@ const getFileIcon = (filename) => {
         case 'json': return <FileJson {...iconProps} className={`${iconProps.className} text-orange-400`} />;
         case 'html': return <Code2 {...iconProps} className={`${iconProps.className} text-red-400`} />;
         case 'css': return <Code2 {...iconProps} className={`${iconProps.className} text-blue-300`} />;
-        case 'txt': case 'yaml': case 'yml': case 'npc': case 'tool':
+        case 'txt': case 'yaml': case 'yml': case 'npc': case 'jinx':
              return <File {...iconProps} className={`${iconProps.className} text-gray-400`} />;
         default: return <File {...iconProps} className={`${iconProps.className} text-gray-400`} />;
     }
@@ -66,7 +66,7 @@ const ChatInterface = () => {
     const [config, setConfig] = useState(null);
     const [currentConversation, setCurrentConversation] = useState(null);
     const [npcTeamMenuOpen, setNpcTeamMenuOpen] = useState(false);
-    const [toolMenuOpen, setToolMenuOpen] = useState(false);
+    const [jinxMenuOpen, setJinxMenuOpen] = useState(false);
     const [uploadedFiles, setUploadedFiles] = useState([]);
     const [imagePreview, setImagePreview] = useState(null);
     const activeConversationRef = useRef(null);
@@ -90,6 +90,67 @@ const ChatInterface = () => {
     const [isStreaming, setIsStreaming] = useState(false);
     const streamIdRef = useRef(null); // To keep track of the current stream's ID
 
+    const [availableNPCs, setAvailableNPCs] = useState([]);
+    const [npcsLoading, setNpcsLoading] = useState(false);
+    const [npcsError, setNpcsError] = useState(null);
+
+    // Add this function to load NPCs
+    const loadAvailableNPCs = async () => {
+        if (!currentPath) return;
+        
+        setNpcsLoading(true);
+        setNpcsError(null);
+        
+        try {
+            // First load project NPCs
+            const projectResponse = await window.api.getNPCTeamProject(currentPath);
+            const projectNPCs = projectResponse.npcs || [];
+            
+            // Then load global NPCs
+            const globalResponse = await window.api.getNPCTeamGlobal();
+            const globalNPCs = globalResponse.npcs || [];
+            
+            // Format and combine both sets
+            const formattedProjectNPCs = projectNPCs.map(npc => ({
+                ...npc,
+                value: npc.name,
+                display_name: `${npc.name} | Project`,
+                source: 'project'
+            }));
+            
+            const formattedGlobalNPCs = globalNPCs.map(npc => ({
+                ...npc,
+                value: npc.name,
+                display_name: `${npc.name} | Global`,
+                source: 'global'
+            }));
+            
+            // Combine with project NPCs first, then global NPCs
+            const combinedNPCs = [...formattedProjectNPCs, ...formattedGlobalNPCs];
+            setAvailableNPCs(combinedNPCs);
+            
+            // Check if current NPC is valid, otherwise select first NPC if available
+            const currentValid = combinedNPCs.some(npc => npc.value === currentNPC);
+            if (!currentNPC || !currentValid) {
+                if (combinedNPCs.length > 0) {
+                    setCurrentNPC(combinedNPCs[0].value);
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching NPCs:', err);
+            setNpcsError(err.message);
+            setAvailableNPCs([]);
+        } finally {
+            setNpcsLoading(false);
+        }
+    };
+
+    // Add this useEffect to load NPCs when the path changes
+    useEffect(() => {
+        if (currentPath) {
+            loadAvailableNPCs();
+        }
+    }, [currentPath]);
 
 
     const directoryConversationsRef = useRef(directoryConversations);
@@ -236,8 +297,17 @@ const ChatInterface = () => {
         try {
             const newConversation = await createNewConversation();
             if (newConversation) {
+                // Set the selected NPC as the current NPC
                 setCurrentNPC(npc.name);
-                setMessages([{ role: 'assistant', content: `Starting conversation with ${npc.name}.`, timestamp: new Date().toISOString(), npc: npc.name }]);
+                
+                // Create a welcome message from the NPC
+                setMessages([{ 
+                    role: 'assistant', 
+                    content: `Hello, I'm ${npc.name}. ${npc.primary_directive}`, 
+                    timestamp: new Date().toISOString(), 
+                    npc: npc.name,
+                    model: npc.model || currentModel
+                }]);
             }
         } catch (error) {
             console.error('Error starting conversation with NPC:', error);
@@ -564,7 +634,9 @@ const ChatInterface = () => {
                                     reasoningContent: (newMessages[msgIndex].reasoningContent || '') + reasoningContent,
                                     toolCalls: toolCalls ? 
                                         (newMessages[msgIndex].toolCalls || []).concat(toolCalls) : 
-                                        newMessages[msgIndex].toolCalls
+                                        newMessages[msgIndex].toolCalls,
+                                    // Ensure the NPC name is preserved
+                                    npc: newMessages[msgIndex].npc || currentNPC
                                 };
                                 return newMessages;
                             }
@@ -651,7 +723,7 @@ const ChatInterface = () => {
     }, [config]);
 
 
-    // Replace your existing handleInputSubmit function with this one:
+    // Update the handleInputSubmit function to pass the complete NPC object to the backend instead of just the name
     const handleInputSubmit = async (e) => {
         e.preventDefault();
         console.log(`[REACT] handleInputSubmit: Entry. isStreaming=${isStreaming}, input="${input.trim().substring(0,20)}...", activeConversationId=${activeConversationId}, uploadedFiles=${uploadedFiles.length}`);
@@ -664,7 +736,11 @@ const ChatInterface = () => {
         const currentInputVal = input; 
         const currentAttachmentsVal = [...uploadedFiles]; 
         const newStreamId = generateId();
-    
+        
+        // Find the full NPC object to get its source (project or global)
+        const selectedNpc = availableNPCs.find(npc => npc.value === currentNPC);
+        console.log(`[REACT] Selected NPC:`, selectedNpc);
+        
         console.log(`[REACT] handleInputSubmit: Setting streamIdRef.current to ${newStreamId}`);
         streamIdRef.current = newStreamId;
         
@@ -681,7 +757,7 @@ const ChatInterface = () => {
                 timestamp: new Date().toISOString(),
                 attachments: currentAttachmentsVal.map(f => ({ name: f.name, type: f.type, size: f.size }))
             };
-    
+
             const assistantPlaceholderMessage = {
                 id: newStreamId, 
                 role: 'assistant',
@@ -696,15 +772,18 @@ const ChatInterface = () => {
             setMessages(prev => [...prev, userMessage, assistantPlaceholderMessage]);
             setInput(''); 
             setUploadedFiles([]); 
-    
+
             console.log(`[REACT] handleInputSubmit: Calling window.api.executeCommandStream with streamId ${newStreamId}. State updated for UI.`);
             
+            // Send the NPC name and information about where it's stored (project or global)
+            // This is what the backend needs to properly load the NPC file
             const result = await window.api.executeCommandStream({
                 commandstr: currentInputVal,
                 currentPath,
                 conversationId: activeConversationId,
                 model: currentModel,
-                npc: currentNPC,
+                npc: selectedNpc ? selectedNpc.name : currentNPC,
+                npcSource: selectedNpc ? selectedNpc.source : 'global', // Either 'project' or 'global'
                 attachments: currentAttachmentsVal.map(file => ({
                     name: file.name, path: file.path, size: file.size, type: file.type
                 })),
@@ -936,7 +1015,7 @@ const ChatInterface = () => {
                 <div className="flex gap-2 justify-center">
                     <button onClick={handleImagesClick} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="View Images"><Image size={16} /></button>
                     <button onClick={handleScreenshotsClick} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="View Screenshots"><Camera size={16} /></button>
-                    <button onClick={() => setToolMenuOpen(true)} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Open Tool Menu"><Wrench size={16} /></button>
+                    <button onClick={() => setJinxMenuOpen(true)} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Open Jinx Menu"><Wrench size={16} /></button>
                     <button onClick={handleOpenNpcTeamMenu} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Open NPC Team Menu"><Users size={16} /></button>
                 </div>
             </div>
@@ -1154,7 +1233,7 @@ const ChatInterface = () => {
                                                 )}
                                             </div>
                     
-                                            {/* Tool Calls Section */}
+                                            {/* LLM tool Calls Section */}
                                             {message.toolCalls && message.toolCalls.length > 0 && (
                                                 <div className="mt-3 px-3 py-2 bg-gray-700 rounded-md border-l-2 border-blue-500">
                                                     <div className="text-xs text-blue-400 mb-1 font-semibold">Function Calls:</div>
@@ -1327,13 +1406,21 @@ const ChatInterface = () => {
                         {!modelsLoading && !modelsError && availableModels.map(model => (<option key={model.value} value={model.value}>{model.display_name}</option>))}
                     </select>
                     <select
-                        value={currentNPC || config?.npc || 'sibiji'}
+                        value={currentNPC || ''}
                         onChange={e => setCurrentNPC(e.target.value)}
                         className="bg-gray-800 text-xs rounded px-2 py-1 border border-gray-700 flex-grow disabled:cursor-not-allowed"
-                        disabled={isStreaming} // Disable while streaming
+                        disabled={npcsLoading || !!npcsError || isStreaming} // Disable while streaming
                     >
-                        <option value="sibiji">NPC: sibiji </option>
-                        {/* Add other NPCs if available */}
+                        {npcsLoading && <option value="">Loading NPCs...</option>}
+                        {npcsError && <option value="">Error loading NPCs</option>}
+                        {!npcsLoading && !npcsError && availableNPCs.length === 0 && (
+                            <option value="">No NPCs available</option>
+                        )}
+                        {!npcsLoading && !npcsError && availableNPCs.map(npc => (
+                            <option key={`${npc.source}-${npc.value}`} value={npc.value}>
+                                {npc.display_name}
+                            </option>
+                        ))}
                     </select>
                 </div>
             </div>
@@ -1349,7 +1436,7 @@ const ChatInterface = () => {
     const renderModals = () => (
         <>
             <NPCTeamMenu isOpen={npcTeamMenuOpen} onClose={handleCloseNpcTeamMenu} currentPath={currentPath} startNewConversation={startNewConversationWithNpc}/>
-            <ToolMenu isOpen={toolMenuOpen} onClose={() => setToolMenuOpen(false)} currentPath={currentPath}/>
+            <JinxMenu isOpen={jinxMenuOpen} onClose={() => setJinxMenuOpen(false)} currentPath={currentPath}/>
             <SettingsMenu isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} currentPath={currentPath} onPathChange={(newPath) => { setCurrentPath(newPath); }}/>
             {isMacroInputOpen && (<MacroInput isOpen={isMacroInputOpen} currentPath={currentPath} onClose={() => { setIsMacroInputOpen(false); window.api?.hideMacro?.(); }} onSubmit={({ macro, conversationId, result }) => { setActiveConversationId(conversationId); setCurrentConversation({ id: conversationId, title: macro.trim().slice(0, 50) }); if (!result) { setMessages([{ role: 'user', content: macro, timestamp: new Date().toISOString(), type: 'command' }, { role: 'assistant', content: 'Processing...', timestamp: new Date().toISOString(), type: 'message' }]); } else { setMessages([{ role: 'user', content: macro, timestamp: new Date().toISOString(), type: 'command' }, { role: 'assistant', content: result?.output || 'No response', timestamp: new Date().toISOString(), type: 'message' }]); } refreshConversations(); }}/> )}
             <PhotoViewer isOpen={photoViewerOpen} onClose={() => setPhotoViewerOpen(false)} type={photoViewerType}/>

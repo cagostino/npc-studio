@@ -3,36 +3,113 @@
 
 set -e  # Exit on any error
 
-pyinstaller --onefile npc_studio_serve.py
+echo "==== Creating optimized Python bundle ===="
+# Create a requirements.txt file for dependencies to be installed system-wide
+cat > requirements.txt << EOF
+flask
+flask_cors
+flask_sse
+redis
+pyyaml
+pillow
+EOF
+
+# Use PyInstaller with optimization flags to reduce size
+# Note: All --exclude-module flags must be part of a single command
+pyinstaller --onefile \
+  --clean \
+  --noupx \
+  --exclude-module=matplotlib \
+  --exclude-module=scipy \
+  --exclude-module=tensorflow \
+  --exclude-module=torch \
+  --exclude-module=sklearn \
+  --exclude-module=notebook \
+  --exclude-module=ipython \
+  --exclude-module=jupyter \
+  --exclude-module=nbconvert \
+  --exclude-module=cv2 \
+  --exclude-module=PIL.ImageTk \
+  --exclude-module=PIL.ImageQt \
+  --exclude-module=docx \
+  --exclude-module=pptx \
+  --exclude-module=cuda \
+  --exclude-module=cudnn \
+  --exclude-module=cudart \
+  --exclude-module=cublas \
+  --exclude-module=cupy \
+  --exclude-module=numba.cuda \
+  --exclude-module=torch.cuda \
+  --exclude-module=tensorflow.python.framework.cuda_util \
+  npc_studio_serve.py
 
 echo "==== Building npc-studio ===="
 cd ~/npcww/npc-studio
+
+# Create directory structure for our resources
+mkdir -p ./dist/resources/backend
+
+# Copy PyInstaller output to resources directory (correct path)
+cp ./dist/npc_studio_serve ./dist/resources/backend/
+
+# Copy requirements file
+cp requirements.txt ./dist/resources/
+
+# Build the electron app (electron-builder will handle dependencies)
 npm run build
 
-
-
-# Find the path to the new .deb file
-DEB_FILE=$(find ./dist-electron -name "*.deb" -type f -print -quit)
-
-if [ -z "$DEB_FILE" ]; then
-    echo "Error: Could not find .deb file after build"
-    exit 1
-fi
-
-echo "==== Found .deb package: $DEB_FILE ===="
+echo "==== Found .deb package in dist-electron directory ===="
 
 echo "==== Uninstalling existing npc-studio ===="
 # Try to uninstall if it exists, but don't fail if it doesn't
 sudo dpkg -r npc-studio || echo "npc-studio not previously installed"
 
-echo "==== Installing new npc-studio package ===="
-sudo dpkg -i "$DEB_FILE"
+# Find the newest .deb file
+DEB_FILE=$(find ./dist-electron -name "*.deb" -type f -print -quit)
 
-# Fix any potential dependency issues
-if [ $? -ne 0 ]; then
-    echo "==== Fixing dependencies ===="
-    sudo apt-get install -f -y
+if [ -n "$DEB_FILE" ]; then
+    echo "==== Installing new npc-studio package: $DEB_FILE ===="
+    sudo dpkg -i "$DEB_FILE"
+    
+    # Fix any potential dependency issues
+    if [ $? -ne 0 ]; then
+        echo "==== Fixing dependencies ===="
+        sudo apt-get install -f -y
+    fi
+else
+    echo "Error: No .deb file found in dist-electron directory"
+    exit 1
 fi
 
+echo "==== Installing Python dependencies ===="
+pip install -r requirements.txt
+
+echo "==== Creating desktop icon ===="
+# Create a desktop entry file
+DESKTOP_FILE="$HOME/.local/share/applications/npc-studio.desktop"
+
+# Ensure the directory exists
+mkdir -p "$HOME/.local/share/applications"
+
+# Create the desktop entry file
+cat > "$DESKTOP_FILE" << EOF
+[Desktop Entry]
+Name=NPC Studio
+Comment=NPC Studio - LLM chatbot interface
+Exec=/usr/bin/npc-studio
+Icon=$(realpath ./assets/icon.png)
+Terminal=false
+Type=Application
+Categories=Development;Utility;
+StartupNotify=true
+EOF
+
+# Make the desktop file executable
+chmod +x "$DESKTOP_FILE"
+
+# Update desktop database to recognize the new application
+update-desktop-database "$HOME/.local/share/applications" || echo "Could not update desktop database, icon might not appear immediately"
+
+echo "==== Desktop icon created ===="
 echo "==== Installation complete ===="
 echo "You can now run 'npc-studio' to start the application"

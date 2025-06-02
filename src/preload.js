@@ -65,9 +65,35 @@ contextBridge.exposeInMainWorld('api', {
 
     showPromptDialog: (options) => ipcRenderer.invoke('showPromptDialog', options),
 
-    getToolsGlobal: () => ipcRenderer.invoke('get-tools-global'),
-    getToolsProject: (currentPath) => ipcRenderer.invoke('get-tools-project', currentPath),
-    saveTool: (data) => ipcRenderer.invoke('save-tool', data),
+    getJinxsGlobal: async () => {
+        try {
+            const response = await fetch('http://127.0.0.1:5337/api/jinxs/global');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            console.log('API returned jinxs data:', data); // Debug what's returned
+            return data; 
+        } catch (error) {
+            console.error('Error loading global jinxs:', error);
+            return { jinxs: [], error: error.message };
+        }
+    },
+    getJinxsProject: async (currentPath) => {
+        try {
+            const response = await fetch(`http://127.0.0.1:5337/api/jinxs/project?currentPath=${encodeURIComponent(currentPath)}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            console.log('API returned project jinxs data:', data); // Debug what's returned
+            return data;
+        } catch (error) {
+            console.error('Error loading project jinxs:', error);
+            return { jinxs: [], error: error.message };
+        }
+    },
+    saveJinx: (data) => ipcRenderer.invoke('save-jinx', data),
 
     getNPCTeamProject: async (currentPath) => {
         if (!currentPath || typeof currentPath !== 'string') {

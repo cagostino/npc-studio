@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Bot, Loader, ChevronRight, X, Save
+    Bot, Loader, ChevronRight, X, Save, MessageSquare
 } from 'lucide-react';
 
 const NPCTeamMenu = ({ isOpen, onClose, currentPath, startNewConversation}) => {  // Add currentPath here
@@ -13,10 +13,14 @@ const NPCTeamMenu = ({ isOpen, onClose, currentPath, startNewConversation}) => {
 
     //console.log(startNewConversation);
 
+    // Update the Chat button and handler
     const handleChatWithNpc = () => {
         if (selectedNpc) {
             // Trigger the start new conversation function from parent and pass the NPC details
             startNewConversation(selectedNpc);
+            // Show feedback toast or message (optional)
+            // You could add a toast notification system if needed
+            
             // close the current menu
             onClose();
         }
@@ -236,9 +240,13 @@ const NPCTeamMenu = ({ isOpen, onClose, currentPath, startNewConversation}) => {
                 <div>
 
                     <button
-                        className="bg-blue-500 text-white px-4 py-2 rounded"
+                        className="bg-blue-500 text-white px-4 py-2 rounded flex items-center gap-2"
                         onClick={handleChatWithNpc}
-                        >  Chat with {editedNpc.name}</button>
+                        disabled={!selectedNpc}
+                    >
+                        <MessageSquare size={16} />
+                        Chat with {editedNpc?.name || 'NPC'}
+                    </button>
                 </div>
 
             </div>
