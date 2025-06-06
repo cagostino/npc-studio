@@ -124,9 +124,10 @@ app.whenReady().then(async () => {
   try {
     log('Starting backend server...');
     // Use the bundled Python executable instead of 'npc serve'
+    const executableName = process.platform === 'win32' ? 'npc_studio_serve.exe' : 'npc_studio_serve';
     const backendPath = app.isPackaged 
-      ? path.join(process.resourcesPath, 'app', 'resources', 'backend', 'npc_studio_serve')
-      : path.join(app.getAppPath(), 'dist', 'resources', 'backend', 'npc_studio_serve');
+      ? path.join(process.resourcesPath, 'backend', executableName)
+      : path.join(app.getAppPath(), 'dist', 'resources', 'backend', executableName);
     
     log(`Using backend path: ${backendPath}`);
     

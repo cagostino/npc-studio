@@ -23,7 +23,8 @@
     "build": "npm run build:vite && electron-builder",
     "preview": "vite preview",
     "rebuild": "electron-rebuild",
-    "postinstall": "node scripts/postinstall.js",
+    "postinstall": "electron-builder install-app-deps && npx electron-rebuild --module-dir . --which-module sqlite3 --force && mkdir -p node_modules/sqlite3/lib/binding/napi-v6-darwin-unknown-arm64 && cp node_modules/sqlite3/build/Release/node_sqlite3.node node_modules/sqlite3/lib/binding/napi-v6-darwin-unknown-arm64/ && node scripts/postinstall.js",
+    "electron:install-deps": "electron-builder install-app-deps",
     "electron:build": "electron-builder",
     "pack": "npm run build && npm run electron:build",
     "prepare": "npm run build:vite"
@@ -31,20 +32,34 @@
   "build": {
     "appId": "com.npc_stu.chat",
     "productName": "npc-stu",
-    "files": [
-      "dist/**/*",
-      "src/**/*",
-      "package.json"
-    ],
     "directories": {
       "buildResources": "assets",
       "output": "dist-electron"
     },
-    "win": {
-      "icon": "assets/icon.png"
-    },
+    "files": [
+      "dist/**/*",
+      "src/**/*",
+      "package.json",
+      "node_modules/sqlite3/build/Release/node_sqlite3.node",
+      "node_modules/sqlite3/lib/binding/**/*"
+    ],
     "mac": {
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "extraResources": [
+        {
+          "from": "dist/resources/backend/npc_studio_serve",
+          "to": "backend/npc_studio_serve"
+        }
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.png",
+      "extraResources": [
+        {
+          "from": "dist/resources/backend/npc_studio_serve.exe",
+          "to": "backend/npc_studio_serve.exe"
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -52,7 +67,13 @@
         "AppImage"
       ],
       "category": "Utility",
-      "icon": "build/icons"
+      "icon": "build/icons",
+      "extraResources": [
+        {
+          "from": "dist/resources/backend/npc_studio_serve",
+          "to": "backend/npc_studio_serve"
+        }
+      ]
     },
     "extraResources": [
       {
@@ -63,14 +84,16 @@
         "from": "assets",
         "to": "assets"
       }
-    ]
+    ],
+    "buildDependenciesFromSource": false,
+    "nodeGypRebuild": false,
+    "npmRebuild": false,
+    "forceCodeSigning": false
   },
   "dependencies": {
     "@headlessui/react": "^2.2.0",
     "@supabase/supabase-js": "^2.47.15",
-    "better-sqlite3": "^11.8.1",
     "debounce": "^2.0.0",
-    "electron": "^25.9.8",
     "electron-store": "^10.0.1",
     "lucide-react": "^0.471.1",
     "node-fetch": "^2.7.0",
@@ -81,12 +104,13 @@
     "react-markdown": "^9.1.0",
     "react-syntax-highlighter": "^15.6.1",
     "remark-gfm": "^4.0.1",
-    "sqlite3": "^5.0.2"
+    "sqlite3": "^5.0.11"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.16",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "electron": "^25.9.8",
     "electron-builder": "^24.13.1",
     "electron-icon-builder": "^2.0.1",
     "electron-rebuild": "^3.2.9",
