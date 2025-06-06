@@ -11,17 +11,6 @@ NPC Studio is an AI IDE that lets users have AI conversations, edit files, explo
 
 ### NPM Installation (Recommended)
 
-You can install NPC Studio globally via npm:
-
-```bash
-npm install -g npc-stu
-```
-
-After installation, you can run NPC Studio from anywhere with:
-
-```bash
-npc-stu
-```
 When installed via the executables or if you manually build npc-studio yourself, then it will be available as
 ```bash
 npc-studio
