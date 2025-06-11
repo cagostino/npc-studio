@@ -1,18 +1,5 @@
-// Check if being run directly from CLI or as part of Electron app
-const isRunningInElectron = process.versions && process.versions.electron;
-
-// Only require electron modules if running in electron
-let app, BrowserWindow, globalShortcut, ipcMain, protocol, shell, desktopCapturer, dialog;
-if (isRunningInElectron) {
-  ({ app, BrowserWindow, globalShortcut, ipcMain, protocol, shell } = require('electron'));
-  ({ desktopCapturer } = require('electron'));
-  ({ dialog } = require('electron'));
-} else {
-  // This script is being run directly (not in Electron context)
-  console.log('This script is meant to be run as part of an Electron app.');
-  process.exit(0);
-}
-
+const { app, BrowserWindow, globalShortcut,ipcMain, protocol, shell} = require('electron');
+const { desktopCapturer } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -21,19 +8,15 @@ const os = require('os');
 const sqlite3 = require('sqlite3').verbose();
 const dbPath = path.join(os.homedir(), 'npcsh_history.db');
 const fetch = require('node-fetch');
+const { dialog } = require('electron');
 const crypto = require('crypto');
 
 const logFilePath = path.join(os.homedir(), '.npc_studio', 'app.log');
 const logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
 let mainWindow = null;
-
-// Only set Electron app properties if running in Electron
-if (isRunningInElectron) {
-  app.setAppUserModelId('com.npc_studio.chat');
-  app.name = 'npc-studio';
-  app.setName('npc-studio');
-}
-
+app.setAppUserModelId('com.npc_studio.chat');
+app.name = 'npc-studio';
+app.setName('npc-studio');
 const log = (...messages) => {
     const msg = messages.join(' ');
     console.log(msg);

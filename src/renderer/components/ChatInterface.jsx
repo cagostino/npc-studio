@@ -94,6 +94,11 @@ const ChatInterface = () => {
     const [npcsLoading, setNpcsLoading] = useState(false);
     const [npcsError, setNpcsError] = useState(null);
 
+    // Add pagination state for messages
+    const [allMessages, setAllMessages] = useState([]); // Store all messages
+    const [displayedMessageCount, setDisplayedMessageCount] = useState(10); // How many to show
+    const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
+
     // Add this function to load NPCs
     const loadAvailableNPCs = async () => {
         if (!currentPath) return;
@@ -254,6 +259,8 @@ const ChatInterface = () => {
           }
 
           setMessages([]); // Clear messages initially
+          setAllMessages([]); // Clear all messages too
+          setDisplayedMessageCount(10); // Reset pagination
 
           //console.log('Fetching messages for conversation:', conversationId);
           const response = await window.api.getConversationMessages(conversationId);
@@ -274,20 +281,24 @@ const ChatInterface = () => {
                 }] : (msg.attachments || []) // Preserve if already formatted
               }));
               //console.log('Setting messages:', formattedMessages);
-              setMessages(formattedMessages);
+              setAllMessages(formattedMessages); // Store all messages
+              setMessages(formattedMessages); // Keep for backward compatibility
           } else if (response?.error) {
                console.error("Error fetching messages:", response.error);
                setError(response.error);
                setMessages([]);
+               setAllMessages([]);
           }
            else {
             //console.log("No messages found or invalid response format for conversation:", conversationId);
             setMessages([]);
+            setAllMessages([]);
           }
         } catch (err) {
           console.error('Error in handleConversationSelect:', err);
           setError(err.message);
           setMessages([]);
+          setAllMessages([]);
         }
       };
     // --- End Restored handleConversationSelect ---
@@ -769,7 +780,10 @@ const ChatInterface = () => {
                 model: currentModel,
                 npc: currentNPC
             };
+            
+            // Update both message arrays for pagination
             setMessages(prev => [...prev, userMessage, assistantPlaceholderMessage]);
+            setAllMessages(prev => [...prev, userMessage, assistantPlaceholderMessage]);
             setInput(''); 
             setUploadedFiles([]); 
 
@@ -1162,27 +1176,39 @@ const ChatInterface = () => {
                     <div className="flex items-center justify-center h-full text-gray-500">
                         Select or create a conversation
                     </div>
-                ) : messages.length === 0 ? (
+                ) : allMessages.length === 0 ? (
                     <div className="text-center text-gray-500 pt-10">
                         No messages in this conversation
                     </div>
                 ) : (
                     <>
                         {/* Load More Button - only shown if more than 10 messages */}
-                        {messages.length > 10 && (
+                        {allMessages.length > displayedMessageCount && (
                             <div className="flex justify-center mb-4">
                                 <button 
-                                    onClick={() => setMessages(prevMessages => [...prevMessages])} // This would be replaced with actual pagination logic
+                                    onClick={async () => {
+                                        setLoadingMoreMessages(true);
+                                        try {
+                                            // Simulate loading more messages
+                                            await new Promise(resolve => setTimeout(resolve, 500));
+                                            
+                                            // Increase the count of displayed messages
+                                            setDisplayedMessageCount(prev => prev + 10);
+                                        } catch (err) {
+                                            console.error('Error loading more messages:', err);
+                                        } finally {
+                                            setLoadingMoreMessages(false);
+                                        }
+                                    }} // This would be replaced with actual pagination logic
                                     className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md text-sm"
                                 >
-                                    Load Previous Messages ({messages.length - 10} more)
+                                    {loadingMoreMessages ? 'Loading...' : `Load Previous Messages (${allMessages.length - displayedMessageCount} more)`}
                                 </button>
                             </div>
-                        )
-                        }
+                        )}
                         
-                        {/* Only show last 10 messages */}
-                        {messages.slice(Math.max(0, messages.length - 10)).map((message) => {
+                        {/* Only show the number of messages specified by displayedMessageCount */}
+                        {allMessages.slice(0, displayedMessageCount).map((message) => {
                             const showStreamingIndicators = !!message.isStreaming;
                             
                             return (
