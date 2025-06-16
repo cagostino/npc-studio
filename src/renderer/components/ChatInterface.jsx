@@ -13,11 +13,13 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 
 const normalizePath = (path) => {
     if (!path) return '';
-    path = path.replace(/\\/g, '/');
-    if (path.endsWith('/') && path.length > 1) {
-      path = path.slice(0, -1);
+    // First replace backslashes with forward slashes
+    let normalizedPath = path.replace(/\\/g, '/');
+    // Then ensure no trailing slash (unless it's just the root path)
+    if (normalizedPath.endsWith('/') && normalizedPath.length > 1) {
+        normalizedPath = normalizedPath.slice(0, -1);
     }
-    return path;
+    return normalizedPath;
 };
 
 const getFileIcon = (filename) => {
@@ -301,7 +303,6 @@ const ChatInterface = () => {
           setAllMessages([]);
         }
       };
-    // --- End Restored handleConversationSelect ---
 
 
     const startNewConversationWithNpc = async (npc) => {
@@ -366,7 +367,33 @@ const ChatInterface = () => {
 
      const refreshConversations = async () => {
         if (currentPath) {
-            await loadConversations(currentPath);
+            console.log('[REFRESH] Starting conversation refresh for path:', currentPath);
+            try {
+                const normalizedPath = normalizePath(currentPath);
+                const response = await window.api.getConversations(normalizedPath);
+                console.log('[REFRESH] Got response:', response);
+                
+                if (response?.conversations) {
+                    const formattedConversations = response.conversations.map(conv => ({
+                        id: conv.id,
+                        title: conv.preview?.split('\n')[0]?.substring(0, 30) || 'New Conversation',
+                        preview: conv.preview || 'No content',
+                        timestamp: conv.timestamp || Date.now()
+                    }));
+                    
+                    // Sort conversations by timestamp, newest first
+                    formattedConversations.sort((a, b) => b.timestamp - a.timestamp);
+                    
+                    console.log('[REFRESH] Setting conversations:', formattedConversations.length);
+                    setDirectoryConversations([...formattedConversations]);
+                } else {
+                    console.error('[REFRESH] No conversations in response');
+                    setDirectoryConversations([]);
+                }
+            } catch (err) {
+                console.error('[REFRESH] Error:', err);
+                setDirectoryConversations([]);
+            }
         }
     };
 
@@ -383,6 +410,9 @@ const ChatInterface = () => {
                 timestamp: conv.timestamp || Date.now()
             })) || [];
 
+            // Sort conversations by timestamp, newest first
+            formattedConversations.sort((a, b) => b.timestamp - a.timestamp);
+            
             setDirectoryConversations(formattedConversations);
 
             const activeExists = formattedConversations.some(c => c.id === currentActiveId);
@@ -529,15 +559,20 @@ const ChatInterface = () => {
                 model: currentModel || config?.model || 'llama3.2',
                 directory_path: currentPath
             });
-            setDirectoryConversations(prev => [...prev, {
+            
+            // Insert the new conversation at the beginning of the array (newest first)
+            setDirectoryConversations(prev => [{
                  id: conversation.id,
                  title: 'New Conversation',
                  preview: 'No content',
                  timestamp: Date.now()
-            }]);
+            }, ...prev]);
+            
             setActiveConversationId(conversation.id); // Set it active
             setCurrentConversation(conversation);
-            setMessages([]);
+            setMessages([]); // Clear messages
+            setAllMessages([]); // Also clear allMessages
+            setDisplayedMessageCount(10); // Reset pagination count
             return conversation; // Return the created conversation
         } catch (err) {
             console.error('Error creating conversation:', err);
@@ -654,6 +689,26 @@ const ChatInterface = () => {
                             console.warn('[REACT] handleStreamData: Assistant placeholder message not found for streamId:', incomingStreamId);
                             return prev;
                         });
+
+                        // Also update allMessages to keep them in sync
+                        setAllMessages(prev => {
+                            const msgIndex = prev.findIndex(m => m.id === incomingStreamId && m.role === 'assistant');
+                            if (msgIndex !== -1) {
+                                const newMessages = [...prev];
+                                newMessages[msgIndex] = {
+                                    ...newMessages[msgIndex],
+                                    content: (newMessages[msgIndex].content || '') + content,
+                                    reasoningContent: (newMessages[msgIndex].reasoningContent || '') + reasoningContent,
+                                    toolCalls: toolCalls ? 
+                                        (newMessages[msgIndex].toolCalls || []).concat(toolCalls) : 
+                                        newMessages[msgIndex].toolCalls,
+                                    // Ensure the NPC name is preserved
+                                    npc: newMessages[msgIndex].npc || currentNPC
+                                };
+                                return newMessages;
+                            }
+                            return prev;
+                        });
                     }
                 } catch (err) {
                     console.error('[REACT] handleStreamData: Error processing stream chunk:', err, 'Raw chunk:', chunk);
@@ -661,25 +716,52 @@ const ChatInterface = () => {
             };
 
             
-            const handleStreamComplete = (_, { streamId: completedStreamId } = {}) => {
+            const handleStreamComplete = async (_, { streamId: completedStreamId } = {}) => {
                 console.log(`[REACT] handleStreamComplete: streamId=${completedStreamId}, currentStreamIdRef=${streamIdRef.current}`);
-                if (streamIdRef.current === completedStreamId) {
+                
+                // Update UI first regardless of streamId match
+                setMessages(prev => prev.map(msg => 
+                    msg.streamId ? { ...msg, streamId: null } : msg
+                ));
+                
+                setAllMessages(prev => prev.map(msg => 
+                    msg.streamId ? { ...msg, streamId: null } : msg
+                ));
+
+                // If this is our current stream, reset streaming state
+                if (streamIdRef.current === completedStreamId || !completedStreamId) {
+                    console.log(`[REACT] handleStreamComplete: Resetting streaming state`);
                     setIsStreaming(false);
                     streamIdRef.current = null;
-                    setMessages(prev => prev.map(msg => 
-                        msg.id === completedStreamId ? { ...msg, streamId: null } : msg
-                    ));
-                } else if (completedStreamId) {
-                    console.warn(`[REACT] handleStreamComplete: Stream ${completedStreamId} completed, but current active stream is ${streamIdRef.current || 'null'}.`);
-                } else {
-                    console.warn(`[REACT] handleStreamComplete: Event received without a streamId. Current active: ${streamIdRef.current || 'null'}. Assuming current stream ended.`);
-                     if (streamIdRef.current) {
-                        const currentActiveStreamId = streamIdRef.current;
-                        setIsStreaming(false);
-                        streamIdRef.current = null;
-                        setMessages(prev => prev.map(msg => 
-                            msg.id === currentActiveStreamId ? { ...msg, streamId: null } : msg
-                        ));
+                    
+                    // FORCE refresh conversations directly from the API
+                    try {
+                        console.log(`[REACT] handleStreamComplete: Forcing conversation refresh`);
+                        if (currentPath) {
+                            // Get fresh conversations directly from the backend
+                            const response = await window.api.getConversations(normalizePath(currentPath));
+                            
+                            if (response?.conversations) {
+                                // Format conversations properly with newest first
+                                const formattedConversations = response.conversations.map(conv => ({
+                                    id: conv.id,
+                                    title: conv.preview?.split('\n')[0]?.substring(0, 30) || 'New Conversation',
+                                    preview: conv.preview || 'No content',
+                                    timestamp: conv.timestamp || Date.now()
+                                }));
+                                
+                                // Sort conversations by timestamp, newest first
+                                formattedConversations.sort((a, b) => b.timestamp - a.timestamp);
+                                
+                                // Force complete replacement of conversations list to trigger UI update
+                                console.log(`[REACT] handleStreamComplete: Setting ${formattedConversations.length} conversations`);
+                                setDirectoryConversations([...formattedConversations]);
+                            } else {
+                                console.error('[REACT] handleStreamComplete: No conversations in response:', response);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('[REACT] handleStreamComplete: Error refreshing conversations:', err);
                     }
                 }
             };
@@ -1000,6 +1082,11 @@ const ChatInterface = () => {
             <div className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
                 <span className="text-sm font-semibold">NPC Studio</span>
                 <div className="flex gap-2">
+                    <button onClick={refreshConversations} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Refresh Conversations">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.44-4.5M22 12.5a10 10 0 0 1-18.44 4.5"/>
+                        </svg>
+                    </button>
                     <button onClick={() => setSettingsOpen(true)} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-full transition-all" aria-label="Settings"><Settings size={14} /></button>
                     <button onClick={deleteSelectedConversations} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Delete Selected Conversations"><Trash size={14} /></button>
                     <button onClick={createNewConversation} className="p-2 bg-blue-600 hover:bg-blue-500 rounded-full transition-all" aria-label="New Conversation"><Plus size={18} /></button>

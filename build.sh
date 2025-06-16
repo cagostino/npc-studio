@@ -16,6 +16,7 @@ EOF
 
 # Use PyInstaller with optimization flags to reduce size
 # Note: All --exclude-module flags must be part of a single command
+
 pyinstaller --onefile \
   --clean \
   --noupx \
@@ -43,14 +44,24 @@ pyinstaller --onefile \
   --exclude-module=tensorflow.python.framework.cuda_util \
   npc_studio_serve.py
 
+# Copy PyInstaller output to resources directory
+cp ./dist/npc_studio_serve ./dist/resources/backend/
+
+
+### uncomment above if you make changes to the backend
+### most of the time tho you just need to run the electron build
+### because the backend is just npc server.
+
+
+
 echo "==== Building npc-studio ===="
-cd ~/npcww/npc-studio
+# cd ~/npcww/npc-studio
 
 # Create directory structure for our resources
 mkdir -p ./dist/resources/backend
 
-# Copy PyInstaller output to resources directory (correct path)
-cp ./dist/npc_studio_serve ./dist/resources/backend/
+# Copy PyInstaller output to resources directory - correct path
+
 
 # Copy requirements file
 cp requirements.txt ./dist/resources/

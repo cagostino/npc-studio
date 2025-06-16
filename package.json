@@ -1,18 +1,14 @@
 {
-  "name": "npc-stu",
+  "name": "npc-studio",
   "version": "0.0.5",
   "description": "The premier interface for the npcsh interpreter.",
   "author": "Chris Agostino <info@npcworldwi.de>",
   "main": "src/main.js",
-  "bin": {
-    "npc-stu": "./bin/cli.js"
-  },
   "files": [
     "bin/cli.js",
     "dist/index.html",
     "dist/assets/",
     "src/",
-    "scripts/postinstall.js",
     "assets/icon.png"
   ],
   "scripts": {
@@ -23,15 +19,15 @@
     "build": "npm run build:vite && electron-builder",
     "preview": "vite preview",
     "rebuild": "electron-rebuild",
-    "postinstall": "electron-builder install-app-deps && npx electron-rebuild --module-dir . --which-module sqlite3 --force && mkdir -p node_modules/sqlite3/lib/binding/napi-v6-darwin-unknown-arm64 && cp node_modules/sqlite3/build/Release/node_sqlite3.node node_modules/sqlite3/lib/binding/napi-v6-darwin-unknown-arm64/ && node scripts/postinstall.js",
     "electron:install-deps": "electron-builder install-app-deps",
+    "electron:rebuild": "npx electron-rebuild --module-dir . --which-module sqlite3 --force",
     "electron:build": "electron-builder",
     "pack": "npm run build && npm run electron:build",
     "prepare": "npm run build:vite"
   },
   "build": {
-    "appId": "com.npc_stu.chat",
-    "productName": "npc-stu",
+    "appId": "com.npc_studio.chat",
+    "productName": "npc-studio",
     "directories": {
       "buildResources": "assets",
       "output": "dist-electron"
@@ -40,8 +36,7 @@
       "dist/**/*",
       "src/**/*",
       "package.json",
-      "node_modules/sqlite3/build/Release/node_sqlite3.node",
-      "node_modules/sqlite3/lib/binding/**/*"
+      "node_modules/sqlite3/**/*"
     ],
     "mac": {
       "icon": "assets/icon.png",
@@ -84,6 +79,9 @@
         "from": "assets",
         "to": "assets"
       }
+    ],
+    "asarUnpack": [
+      "node_modules/sqlite3/**/*"
     ],
     "buildDependenciesFromSource": false,
     "nodeGypRebuild": false,
