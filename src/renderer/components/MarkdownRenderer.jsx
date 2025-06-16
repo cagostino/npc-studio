@@ -46,6 +46,7 @@ const CodeBlock = ({ node, inline, className, children, ...props }) => {
                 language={match ? match[1] : null}
                 PreTag="div"
                 className="!bg-gray-950 !p-4 text-sm"
+                showLineNumbers={true}
                 {...props}
             >
                 {codeString}
@@ -60,15 +61,52 @@ const MarkdownRenderer = ({ content }) => {
             remarkPlugins={[remarkGfm]}
             components={{
                 code: CodeBlock,
-                // Tailwind CSS Typography plugin handles most styling.
-                // You can override or add more custom components if needed:
-                // p: ({node, ...props}) => <p className="mb-2" {...props} />,
-                // a: ({node, ...props}) => <a className="text-blue-400 hover:underline" {...props} />,
-                // img: ({node, ...props}) => <img className="max-w-full h-auto rounded-md my-2" {...props} />,
+                // Fix DOM nesting warnings by handling paragraphs that contain code blocks
+                p: ({ node, children, ...props }) => {
+                    // Check if this paragraph contains only a code block
+                    const hasCodeBlock = node.children.some(child => 
+                        child.type === 'element' && child.tagName === 'code' && child.properties?.className
+                    );
+                    
+                    if (hasCodeBlock) {
+                        // Return a div instead of p to avoid nesting issues
+                        return <div className="mb-2" {...props}>{children}</div>;
+                    }
+                    
+                    return <p className="mb-2" {...props}>{children}</p>;
+                },
+                // Custom link styling
+                a: ({ node, ...props }) => (
+                    <a className="text-blue-400 hover:underline" {...props} />
+                ),
+                // Custom image styling
+                img: ({ node, ...props }) => (
+                    <img className="max-w-full h-auto rounded-md my-2" {...props} />
+                ),
+                // Handle lists properly
+                ul: ({ node, ...props }) => (
+                    <ul className="list-disc list-inside mb-2 space-y-1" {...props} />
+                ),
+                ol: ({ node, ...props }) => (
+                    <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />
+                ),
+                // Handle headings
+                h1: ({ node, ...props }) => (
+                    <h1 className="text-xl font-bold mb-2 mt-4" {...props} />
+                ),
+                h2: ({ node, ...props }) => (
+                    <h2 className="text-lg font-bold mb-2 mt-3" {...props} />
+                ),
+                h3: ({ node, ...props }) => (
+                    <h3 className="text-base font-bold mb-2 mt-2" {...props} />
+                ),
+                // Handle blockquotes
+                blockquote: ({ node, ...props }) => (
+                    <blockquote className="border-l-4 border-gray-500 pl-4 italic text-gray-300 my-2" {...props} />
+                ),
             }}
-            // Apply prose for overall Markdown styling. Adjust prose-sm, prose-base, etc. as needed.
-            // prose-invert is for dark mode.
-            className="prose prose-sm prose-invert max-w-none"
+            // Remove prose classes to avoid conflicts with custom components
+            className="text-gray-200"
         >
             {content || ''}
         </ReactMarkdown>

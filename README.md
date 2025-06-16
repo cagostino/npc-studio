@@ -134,7 +134,4 @@ NPC Studio is licensed under AGPLv3 with additional terms explicitly prohibiting
 
 ### items to do...
 - letting ppl see lineage in npc team
-- dark light theme halfway thru
-- fix npc team menu
-- fix tool menu
 - database overview tab

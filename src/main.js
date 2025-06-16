@@ -931,19 +931,16 @@ ipcMain.handle('executeCommand', async (_, data) => {
     try {
       console.log('Executing command:', data);
       console.log('Data type:', typeof data);
-      const commandString = data.commandstr;
-      const currentPath = data.currentPath || DEFAULT_CONFIG.baseDir;
-      const conversationId = data.conversationId || null;
-
+      
       const response = await fetch('http://127.0.0.1:5337/api/execute', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          commandstr: commandString,
-          currentPath,
-          conversationId,
+          commandstr: data.commandstr,
+          currentPath: data.current_path || data.currentPath || DEFAULT_CONFIG.baseDir,
+          conversationId: data.conversationId || null,
           model: data.model || DEFAULT_CONFIG.model,
           npc: data.npc || DEFAULT_CONFIG.npc
         })
@@ -955,7 +952,8 @@ ipcMain.handle('executeCommand', async (_, data) => {
       }
       return result;
     } catch (err) {
-      throw err;
+      console.error('Error in executeCommand:', err);
+      return { error: err.message };
     }
   });
 

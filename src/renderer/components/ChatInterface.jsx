@@ -13,9 +13,7 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 
 const normalizePath = (path) => {
     if (!path) return '';
-    // First replace backslashes with forward slashes
     let normalizedPath = path.replace(/\\/g, '/');
-    // Then ensure no trailing slash (unless it's just the root path)
     if (normalizedPath.endsWith('/') && normalizedPath.length > 1) {
         normalizedPath = normalizedPath.slice(0, -1);
     }
@@ -47,6 +45,22 @@ const convertFileToBase64 = (file) => {
     });
 };
 
+// Helper function to highlight search terms in text, returning a string with <mark> tags.
+// Your MarkdownRenderer must be configured to handle raw HTML for this to work.
+const highlightSearchTerm = (text, term) => {
+    if (!term || !text) return text;
+    try {
+        // Escape special characters in the term for the regex
+        const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(${escapedTerm})`, 'gi');
+        return text.replace(regex, `<mark class="bg-yellow-500 text-black rounded px-1">$1</mark>`);
+    } catch (e) {
+        console.error("Error highlighting search term:", e);
+        return text;
+    }
+};
+
+
 const ChatInterface = () => {
     const [isEditingPath, setIsEditingPath] = useState(false);
     const [editedPath, setEditedPath] = useState('');
@@ -55,6 +69,7 @@ const ChatInterface = () => {
     const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
     const [photoViewerType, setPhotoViewerType] = useState('images');
     const [selectedConvos, setSelectedConvos] = useState(new Set());
+    const [lastClickedIndex, setLastClickedIndex] = useState(null);
     const [contextMenuPos, setContextMenuPos] = useState(null);
     const [currentPath, setCurrentPath] = useState('');
     const [folderStructure, setFolderStructure] = useState({});
@@ -90,16 +105,351 @@ const ChatInterface = () => {
     const initialLoadComplete = useRef(false);
     const [directoryConversations, setDirectoryConversations] = useState([]);
     const [isStreaming, setIsStreaming] = useState(false);
-    const streamIdRef = useRef(null); // To keep track of the current stream's ID
+    const streamIdRef = useRef(null);
 
     const [availableNPCs, setAvailableNPCs] = useState([]);
     const [npcsLoading, setNpcsLoading] = useState(false);
     const [npcsError, setNpcsError] = useState(null);
 
-    // Add pagination state for messages
-    const [allMessages, setAllMessages] = useState([]); // Store all messages
-    const [displayedMessageCount, setDisplayedMessageCount] = useState(10); // How many to show
+    const [allMessages, setAllMessages] = useState([]);
+    const [displayedMessageCount, setDisplayedMessageCount] = useState(10);
     const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
+
+    const [selectedMessages, setSelectedMessages] = useState(new Set());
+    const [messageSelectionMode, setMessageSelectionMode] = useState(false);
+    const [messageContextMenuPos, setMessageContextMenuPos] = useState(null);
+    const [messageOperationModal, setMessageOperationModal] = useState({
+        isOpen: false,
+        type: '',
+        title: '',
+        defaultPrompt: '',
+        onConfirm: null
+    });
+
+    // --- NEW/ADJUSTED SEARCH STATE ---
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+    const [isGlobalSearch, setIsGlobalSearch] = useState(false); // Checkbox state
+    const [searchLoading, setSearchLoading] = useState(false); // For deep search spinner
+    const [deepSearchResults, setDeepSearchResults] = useState([]); // Stores results from backend
+    const [messageSearchResults, setMessageSearchResults] = useState([]); // Stores in-chat match locations
+    const [activeSearchResult, setActiveSearchResult] = useState(null); // ID of highlighted message
+    const searchInputRef = useRef(null); // Ref to focus the search input
+
+    // --- NEW: useEffect for Ctrl+F shortcut ---
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
+
+
+    // --- NEW: Handler for deep search submission ---
+    const handleSearchSubmit = async () => {
+        if (!searchTerm.trim()) {
+            setIsSearching(false);
+            setDeepSearchResults([]);
+            return;
+        }
+
+        setSearchLoading(true);
+        setIsSearching(true);
+        setDeepSearchResults([]);
+        setError(null);
+
+        const lowerCaseQuery = searchTerm.toLowerCase();
+
+        try {
+            let results = [];
+
+            if (isGlobalSearch) {
+                // --- GLOBAL SEARCH: Uses the backend to search the filesystem ---
+                console.log("Performing GLOBAL search for:", searchTerm);
+                const backendResults = await window.api.performSearch({
+                    query: searchTerm,
+                    path: currentPath, // The backend can use this to find the root
+                    global: true,
+                });
+                
+                if (backendResults && !backendResults.error) {
+                    results = backendResults;
+                } else {
+                    throw new Error(backendResults?.error || "Global search failed.");
+                }
+
+            } else {
+                // --- LOCAL SEARCH: Searches through loaded conversations in the current path ---
+                console.log("Performing LOCAL search for:", searchTerm);
+                
+                // We iterate through the conversations already in the sidebar state.
+                for (const conv of directoryConversations) {
+                    // Fetch the messages for each conversation.
+                    const messages = await window.api.getConversationMessages(conv.id);
+                    if (!Array.isArray(messages)) continue;
+
+                    const matches = [];
+                    for (const message of messages) {
+                        if (message.content && message.content.toLowerCase().includes(lowerCaseQuery)) {
+                            // Create a snippet for the search result display
+                            const index = message.content.toLowerCase().indexOf(lowerCaseQuery);
+                            const start = Math.max(0, index - 25);
+                            const end = Math.min(message.content.length, index + searchTerm.length + 25);
+                            
+                            matches.push({
+                                messageId: message.id || message.timestamp,
+                                snippet: message.content.substring(start, end).trim(),
+                            });
+                        }
+                    }
+
+                    // If we found any matches in this conversation, add it to our results.
+                    if (matches.length > 0) {
+                        results.push({
+                            conversationId: conv.id,
+                            conversationTitle: conv.title,
+                            timestamp: conv.timestamp,
+                            matches: matches,
+                        });
+                    }
+                }
+            }
+
+            // Sort and set the final results, regardless of search type
+            const sortedResults = results.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            setDeepSearchResults(sortedResults);
+
+        } catch (err) {
+            console.error("Error during search:", err);
+            setError(err.message);
+            setDeepSearchResults([]);
+        } finally {
+            setSearchLoading(false);
+        }
+    };
+
+    // --- ADJUSTED: Search input change handler ---
+    const handleSearchChange = (e) => {
+        const searchValue = e.target.value;
+        setSearchTerm(searchValue);
+
+        // If the user clears the input, reset the search state and go back to normal view
+        if (!searchValue.trim()) {
+            setIsSearching(false);
+            setDeepSearchResults([]);
+            setMessageSearchResults([]);
+        }
+        // The actual search is now triggered by the Enter key in the input field
+    };
+
+    // Message selection handlers
+const toggleMessageSelection = (messageId) => {
+    if (!messageSelectionMode) return;
+    setSelectedMessages(prev => {
+        const newSelected = new Set(prev);
+        if (newSelected.has(messageId)) {
+            newSelected.delete(messageId);
+        } else {
+            newSelected.add(messageId);
+        }
+        return newSelected;
+    });
+};
+
+const toggleMessageSelectionMode = () => {
+    setMessageSelectionMode(!messageSelectionMode);
+    setSelectedMessages(new Set());
+    setMessageContextMenuPos(null);
+};
+
+const handleMessageContextMenu = (e, messageId) => {
+    e.preventDefault();
+    if (!selectedMessages.has(messageId) && selectedMessages.size > 0) {
+        setSelectedMessages(prev => new Set([...prev, messageId]));
+    } else if (selectedMessages.size === 0) {
+        setSelectedMessages(new Set([messageId]));
+    }
+    setMessageContextMenuPos({ x: e.clientX, y: e.clientY, messageId });
+};
+
+const handleApplyPromptToMessages = async (operationType, customPrompt = '') => {
+    const selectedIds = Array.from(selectedMessages);
+    if (selectedIds.length === 0) return;
+    
+    const selectedMsgs = allMessages.filter(msg => selectedIds.includes(msg.id || msg.timestamp));
+    if (selectedMsgs.length === 0) return;
+
+    let prompt = '';
+    switch (operationType) {
+        case 'summarize':
+            prompt = `Summarize these ${selectedMsgs.length} messages:\n\n`;
+            break;
+        case 'analyze':
+            prompt = `Analyze these ${selectedMsgs.length} messages for key insights:\n\n`;
+            break;
+        case 'extract':
+            prompt = `Extract the key information from these ${selectedMsgs.length} messages:\n\n`;
+            break;
+        case 'custom':
+            prompt = customPrompt + `\n\nApply this to these ${selectedMsgs.length} messages:\n\n`;
+            break;
+    }
+
+    const messagesText = selectedMsgs.map((msg, idx) => 
+        `Message ${idx + 1} (${msg.role}):\n${msg.content}`
+    ).join('\n\n');
+
+    const fullPrompt = prompt + messagesText;
+
+    try {
+        // For batch operations, always create a new conversation
+        console.log('Creating new conversation for message operation:', operationType);
+        const newConversation = await createNewConversation();
+        
+        if (!newConversation) {
+            throw new Error('Failed to create new conversation');
+        }
+
+        // Set the new conversation as active
+        setActiveConversationId(newConversation.id);
+        setCurrentConversation(newConversation);
+        
+        // Clear current messages and prepare for new conversation
+        setMessages([]);
+        setAllMessages([]);
+        setDisplayedMessageCount(10);
+
+        // Generate a new stream ID for this operation
+        const newStreamId = generateId();
+        streamIdRef.current = newStreamId;
+        setIsStreaming(true);
+
+        // Find the full NPC object to get its source (project or global)
+        const selectedNpc = availableNPCs.find(npc => npc.value === currentNPC);
+
+        // Create user message and assistant placeholder for the new conversation
+        const userMessage = {
+            id: generateId(),
+            role: 'user',
+            content: fullPrompt,
+            timestamp: new Date().toISOString(),
+            type: 'message'
+        };
+
+        const assistantPlaceholderMessage = {
+            id: newStreamId,
+            role: 'assistant',
+            content: '',
+            reasoningContent: '',
+            toolCalls: [],
+            timestamp: new Date().toISOString(),
+            streamId: newStreamId,
+            model: currentModel,
+            npc: currentNPC
+        };
+
+        // Update both message arrays
+        setMessages([userMessage, assistantPlaceholderMessage]);
+        setAllMessages([userMessage, assistantPlaceholderMessage]);
+
+        console.log('Sending message operation to backend with streamId:', newStreamId);
+
+        // Execute the command with the new conversation ID
+        const result = await window.api.executeCommandStream({
+            commandstr: fullPrompt,
+            currentPath,
+            conversationId: newConversation.id, // Use the new conversation
+            model: currentModel,
+            npc: selectedNpc ? selectedNpc.name : currentNPC,
+            npcSource: selectedNpc ? selectedNpc.source : 'global',
+            attachments: [],
+            streamId: newStreamId
+        });
+
+        if (result && result.error) {
+            throw new Error(result.error);
+        }
+
+        console.log('Message operation initiated successfully in new conversation:', newConversation.id);
+        
+    } catch (err) {
+        console.error('Error processing messages:', err);
+        setError(err.message);
+        
+        // Reset streaming state on error
+        setIsStreaming(false);
+        streamIdRef.current = null;
+        
+        // Fallback: put the prompt in the input field of the current conversation
+        if (activeConversationId) {
+            setInput(fullPrompt);
+        }
+    } finally {
+        // Clear selection
+        setSelectedMessages(new Set());
+        setMessageContextMenuPos(null);
+        setMessageOperationModal({ ...messageOperationModal, isOpen: false });
+    }
+};
+
+const handleApplyPromptToCurrentConversation = async (operationType, customPrompt = '') => {
+    const selectedIds = Array.from(selectedMessages);
+    if (selectedIds.length === 0) return;
+    
+    const selectedMsgs = allMessages.filter(msg => selectedIds.includes(msg.id || msg.timestamp));
+    if (selectedMsgs.length === 0) return;
+
+    let prompt = '';
+    switch (operationType) {
+        case 'summarize':
+            prompt = `Summarize these ${selectedMsgs.length} messages:\n\n`;
+            break;
+        case 'analyze':
+            prompt = `Analyze these ${selectedMsgs.length} messages for key insights:\n\n`;
+            break;
+        case 'extract':
+            prompt = `Extract the key information from these ${selectedMsgs.length} messages:\n\n`;
+            break;
+        case 'custom':
+            prompt = customPrompt + `\n\nApply this to these ${selectedMsgs.length} messages:\n\n`;
+            break;
+    }
+
+    const messagesText = selectedMsgs.map((msg, idx) => 
+        `Message ${idx + 1} (${msg.role}):\n${msg.content}`
+    ).join('\n\n');
+
+    const fullPrompt = prompt + messagesText;
+
+    try {
+        // For input field operations, just populate the input field
+        // Make sure we have an active conversation
+        if (!activeConversationId) {
+            console.log('No active conversation, creating new one for input field operation');
+            await createNewConversation();
+        }
+
+        // Put the prompt in the input field for the user to review and potentially modify
+        setInput(fullPrompt);
+        
+        console.log('Message operation prompt added to input field');
+        
+    } catch (err) {
+        console.error('Error preparing prompt for input field:', err);
+        setError(err.message);
+    } finally {
+        // Clear selection
+        setSelectedMessages(new Set());
+        setMessageContextMenuPos(null);
+        setMessageOperationModal({ ...messageOperationModal, isOpen: false });
+    }
+};
 
     // Add this function to load NPCs
     const loadAvailableNPCs = async () => {
@@ -198,7 +548,8 @@ const ChatInterface = () => {
             if (response.error) throw new Error(response.error);
             setFileChanged(false);
             console.log('File saved successfully');
-        } catch (err) {
+        } catch (err)
+ {
             console.error('Error saving file:', err);
             setError(err.message);
         }
@@ -997,24 +1348,86 @@ const ChatInterface = () => {
     const handleSummarizeAndStart = async () => {
         const selectedIds = Array.from(selectedConvos);
         if (selectedIds.length === 0) return;
-        setContextMenuPos(null);
+        setContextMenuPos(null); // Close context menu
+
         try {
-            const convosContent = await Promise.all(selectedIds.map(id => window.api.getConversationMessages(id)));
-            const summaryCommand = `Summarize these conversations:\n\n${convosContent.map((msgs, i) => `Conv ${i + 1}:\n${msgs.map(m => `${m.role}: ${m.content.replace(/'/g, "\\'").replace(/"/g, '\\"')}`).join('\n')}`).join('\n\n')}`;
-            const summaryResult = await window.api.executeCommand({ commandstr: summaryCommand, currentPath: currentPath, conversationId: null });
-            if (!summaryResult?.output) throw new Error('Failed summary generation');
-            const summaryConvo = await createNewConversation();
-            if (summaryConvo) {
-                 setMessages([
-                    { role: 'system', content: `Started from summary of ${selectedIds.length} conversation(s).`, timestamp: new Date().toISOString(), type: 'info' },
-                    { role: 'user', content: `Based on the previous conversations (summarized), let's continue...`, timestamp: new Date().toISOString(), type: 'message' }
-                 ]);
+            // 1. Fetch and format conversation content
+            const convosContentPromises = selectedIds.map(async (id, index) => {
+                const messages = await window.api.getConversationMessages(id);
+                if (!Array.isArray(messages)) {
+                    console.warn(`Could not fetch messages for conversation ${id}`);
+                    return `Conversation ${index + 1} (ID: ${id}): [Error fetching content]`;
+                }
+                const messagesText = messages.map(msg => `${msg.role}: ${msg.content}`).join('\n');
+                return `Conversation ${index + 1} (ID: ${id}):\n---\n${messagesText}\n---`;
+            });
+            const convosContent = await Promise.all(convosContentPromises);
+            
+            // 2. Create the full prompt for the LLM
+            const fullPrompt = `Please provide a concise summary of the following ${selectedIds.length} conversation(s):\n\n` + convosContent.join('\n\n');
+
+            // 3. Create a new conversation for this operation
+            const newConversation = await createNewConversation();
+            if (!newConversation) {
+                throw new Error('Failed to create a new conversation for the summary.');
             }
+
+            // Set the new conversation as active
+            setActiveConversationId(newConversation.id);
+            setCurrentConversation(newConversation);
+            setMessages([]);
+            setAllMessages([]);
+            setDisplayedMessageCount(10);
+
+            // 4. Prepare for the streaming response
+            const newStreamId = generateId();
+            streamIdRef.current = newStreamId;
+            setIsStreaming(true);
+
+            const selectedNpc = availableNPCs.find(npc => npc.value === currentNPC);
+
+            const userMessage = {
+                id: generateId(),
+                role: 'user',
+                content: fullPrompt,
+                timestamp: new Date().toISOString(),
+                type: 'message'
+            };
+
+            const assistantPlaceholderMessage = {
+                id: newStreamId,
+                role: 'assistant',
+                content: '',
+                reasoningContent: '',
+                toolCalls: [],
+                timestamp: new Date().toISOString(),
+                streamId: newStreamId,
+                model: currentModel,
+                npc: currentNPC
+            };
+
+            setMessages([userMessage, assistantPlaceholderMessage]);
+            setAllMessages([userMessage, assistantPlaceholderMessage]);
+            
+            // 5. Execute the streaming command
+            await window.api.executeCommandStream({
+                commandstr: fullPrompt,
+                currentPath,
+                conversationId: newConversation.id,
+                model: currentModel,
+                npc: selectedNpc ? selectedNpc.name : currentNPC,
+                npcSource: selectedNpc ? selectedNpc.source : 'global',
+                attachments: [],
+                streamId: newStreamId
+            });
+
         } catch (err) {
-            console.error('Error summarizing and starting:', err);
+            console.error('Error summarizing and starting new conversation:', err);
             setError(err.message);
+            setIsStreaming(false); // Reset streaming state on error
+            streamIdRef.current = null;
         } finally {
-            setSelectedConvos(new Set());
+            setSelectedConvos(new Set()); // Clear selection
         }
     };
 
@@ -1022,102 +1435,251 @@ const ChatInterface = () => {
         const selectedIds = Array.from(selectedConvos);
         if (selectedIds.length === 0) return;
         setContextMenuPos(null);
+
         try {
-            const convosContent = await Promise.all(selectedIds.map(id => window.api.getConversationMessages(id)));
-            const summaryCommand = `Summarize these conversations:\n\n${convosContent.map((msgs, i) => `Conv ${i + 1}:\n${msgs.map(m => `${m.role}: ${m.content.replace(/'/g, "\\'").replace(/"/g, '\\"')}`).join('\n')}`).join('\n\n')}`;
-            const summaryResult = await window.api.executeCommand({ commandstr: summaryCommand, currentPath: currentPath, conversationId: null });
-            if (!summaryResult?.output) throw new Error('Failed summary generation');
+            // 1. Fetch and format conversation content
+            const convosContentPromises = selectedIds.map(async (id, index) => {
+                const messages = await window.api.getConversationMessages(id);
+                if (!Array.isArray(messages)) {
+                    console.warn(`Could not fetch messages for conversation ${id}`);
+                    return `Conversation ${index + 1} (ID: ${id}): [Error fetching content]`;
+                }
+                const messagesText = messages.map(msg => `${msg.role}: ${msg.content}`).join('\n');
+                return `Conversation ${index + 1} (ID: ${id}):\n---\n${messagesText}\n---`;
+            });
+            const convosContent = await Promise.all(convosContentPromises);
+
+            // 2. Create the full prompt
+            const fullPrompt = `Please provide a concise summary of the following ${selectedIds.length} conversation(s):\n\n` + convosContent.join('\n\n');
+
+            // 3. Ensure an active conversation exists, creating one if necessary
             if (!activeConversationId) {
-               await createNewConversation();
+                await createNewConversation();
             }
-            requestAnimationFrame(() => setInput(summaryResult.output));
+
+            // 4. Place the generated prompt into the input field for the user to edit/send
+            setInput(fullPrompt);
+            
         } catch (err) {
-            console.error('Error summarizing and drafting:', err);
+            console.error('Error preparing summary draft:', err);
             setError(err.message);
         } finally {
-             setSelectedConvos(new Set());
+            setSelectedConvos(new Set()); // Clear selection
         }
     };
 
     const handleSummarizeAndPrompt = async () => {
-         const selectedIds = Array.from(selectedConvos);
-         if (selectedIds.length === 0) return;
-         setContextMenuPos(null);
-         try {
-             const convosContent = await Promise.all(selectedIds.map(id => window.api.getConversationMessages(id)));
-             const summaryCommand = `Summarize these conversations:\n\n${convosContent.map((msgs, i) => `Conv ${i + 1}:\n${msgs.map(m => `${m.role}: ${m.content.replace(/'/g, "\\'").replace(/"/g, '\\"')}`).join('\n')}`).join('\n\n')}`;
-             const summaryResult = await window.api.executeCommand({ commandstr: summaryCommand, currentPath: currentPath, conversationId: null });
-             if (!summaryResult?.output) throw new Error('Failed summary generation');
-             setPromptModal({
-                 isOpen: true,
-                 title: 'Modify Summary',
-                 message: 'Review and modify the summary before starting the conversation:',
-                 defaultValue: summaryResult.output,
-                 onConfirm: async (userModifiedSummary) => {
-                     if (userModifiedSummary) {
-                         try {
-                             const summaryConvo = await createNewConversation();
-                             if(summaryConvo) {
-                                 setInput(userModifiedSummary);
-                             }
-                         } catch(innerErr) {
-                             console.error("Error creating conversation for modified summary:", innerErr);
-                             setError(innerErr.message);
-                         }
-                     }
-                 }
-             });
-         } catch (err) {
-             console.error('Error preparing summary prompt:', err);
-             setError(err.message);
-         } finally {
-              setSelectedConvos(new Set());
-         }
+        const selectedIds = Array.from(selectedConvos);
+        if (selectedIds.length === 0) return;
+        setContextMenuPos(null);
+
+        try {
+            // 1. Fetch and format content to create the initial prompt
+            const convosContentPromises = selectedIds.map(async (id, index) => {
+                const messages = await window.api.getConversationMessages(id);
+                if (!Array.isArray(messages)) {
+                    console.warn(`Could not fetch messages for conversation ${id}`);
+                    return `Conversation ${index + 1} (ID: ${id}): [Error fetching content]`;
+                }
+                const messagesText = messages.map(msg => `${msg.role}: ${msg.content}`).join('\n');
+                return `Conversation ${index + 1} (ID: ${id}):\n---\n${messagesText}\n---`;
+            });
+            const convosContent = await Promise.all(convosContentPromises);
+            const initialPrompt = `Please provide a concise summary of the following ${selectedIds.length} conversation(s):\n\n` + convosContent.join('\n\n');
+
+            // 2. Open the modal, allowing the user to edit the prompt before execution
+            setPromptModal({
+                isOpen: true,
+                title: 'Review and Edit Prompt',
+                message: 'Edit the prompt below, then confirm to start a new conversation with it.',
+                defaultValue: initialPrompt,
+                onConfirm: async (finalPrompt) => {
+                    if (!finalPrompt || !finalPrompt.trim()) return;
+
+                    try {
+                        // This logic mirrors handleSummarizeAndStart, using the user-edited prompt
+                        const newConversation = await createNewConversation();
+                        if (!newConversation) throw new Error('Failed to create new conversation.');
+                        
+                        setActiveConversationId(newConversation.id);
+                        setCurrentConversation(newConversation);
+                        setMessages([]);
+                        setAllMessages([]);
+
+                        const newStreamId = generateId();
+                        streamIdRef.current = newStreamId;
+                        setIsStreaming(true);
+
+                        const selectedNpc = availableNPCs.find(npc => npc.value === currentNPC);
+
+                        const userMessage = { id: generateId(), role: 'user', content: finalPrompt, timestamp: new Date().toISOString(), type: 'message' };
+                        const assistantPlaceholderMessage = { id: newStreamId, role: 'assistant', content: '', reasoningContent: '', toolCalls: [], timestamp: new Date().toISOString(), streamId: newStreamId, model: currentModel, npc: currentNPC };
+                        
+                        setMessages([userMessage, assistantPlaceholderMessage]);
+                        setAllMessages([userMessage, assistantPlaceholderMessage]);
+                        
+                        await window.api.executeCommandStream({
+                            commandstr: finalPrompt,
+                            currentPath,
+                            conversationId: newConversation.id,
+                            model: currentModel,
+                            npc: selectedNpc ? selectedNpc.name : currentNPC,
+                            npcSource: selectedNpc ? selectedNpc.source : 'global',
+                            attachments: [],
+                            streamId: newStreamId
+                        });
+                    } catch (innerErr) {
+                        console.error('Error executing prompted summary:', innerErr);
+                        setError(innerErr.message);
+                        setIsStreaming(false);
+                        streamIdRef.current = null;
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('Error preparing summary prompt:', err);
+            setError(err.message);
+        } finally {
+            setSelectedConvos(new Set()); // Clear selection after opening modal
+        }
     };
 
-    // --- Internal Render Functions ---
+    const handleSearchResultSelect = async (conversationId, searchTerm) => {
+        // First, select the conversation. This will load its messages.
+        await handleConversationSelect(conversationId);
+        
+        // After messages are loaded (handleConversationSelect is async),
+        // we need to wait for the state to update. We use a short timeout
+        // to allow React to re-render with the new messages.
+        setTimeout(() => {
+            // Access the latest messages from the state `allMessages`
+            setAllMessages(currentMessages => {
+                const results = [];
+                currentMessages.forEach((msg, index) => {
+                    if (msg.content && msg.content.toLowerCase().includes(searchTerm.toLowerCase())) {
+                        results.push({
+                            messageId: msg.id || msg.timestamp,
+                            index: index,
+                            content: msg.content
+                        });
+                    }
+                });
 
+                setMessageSearchResults(results);
+                if (results.length > 0) {
+                    const firstResultId = results[0].messageId;
+                    setActiveSearchResult(firstResultId);
+                    
+                    // Scroll to the first result
+                    setTimeout(() => {
+                        const messageElement = document.getElementById(`message-${firstResultId}`);
+                        if (messageElement) {
+                            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }, 100);
+                }
+                return currentMessages; // Return original messages, no change needed here
+            });
+        }, 100); // Small delay to ensure messages are in state
+    };
+
+
+    // --- Internal Render Functions ---
     const renderSidebar = () => (
-        <div className="w-64 border-r border-gray-700 flex flex-col flex-shrink-0 bg-gray-900">
-            <div className="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
-                <span className="text-sm font-semibold">NPC Studio</span>
+        <div className="w-64 border-r theme-border flex flex-col flex-shrink-0 theme-sidebar">
+            <div className="p-4 border-b theme-border flex items-center justify-between flex-shrink-0">
+                <span className="text-sm font-semibold theme-text-primary">NPC Studio</span>
                 <div className="flex gap-2">
-                    <button onClick={refreshConversations} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Refresh Conversations">
+                    <button onClick={refreshConversations} className="p-2 theme-button theme-hover rounded-full transition-all" aria-label="Refresh Conversations">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.44-4.5M22 12.5a10 10 0 0 1-18.44 4.5"/>
                         </svg>
                     </button>
-                    <button onClick={() => setSettingsOpen(true)} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-full transition-all" aria-label="Settings"><Settings size={14} /></button>
-                    <button onClick={deleteSelectedConversations} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Delete Selected Conversations"><Trash size={14} /></button>
-                    <button onClick={createNewConversation} className="p-2 bg-blue-600 hover:bg-blue-500 rounded-full transition-all" aria-label="New Conversation"><Plus size={18} /></button>
+                    <button onClick={() => setSettingsOpen(true)} className="p-2 theme-button theme-hover rounded-full transition-all" aria-label="Settings"><Settings size={14} /></button>
+                    <button onClick={deleteSelectedConversations} className="p-2 theme-hover rounded-full transition-all" aria-label="Delete Selected Conversations"><Trash size={14} /></button>
+                    <button onClick={createNewConversation} className="p-2 theme-button-primary rounded-full transition-all" aria-label="New Conversation"><Plus size={18} /></button>
                     <button className="theme-toggle-btn p-1" onClick={toggleTheme}>{isDarkMode ? '🌙' : '☀️'}</button>
                 </div>
             </div>
-            <div className="p-2 border-b border-gray-700 flex items-center gap-2 flex-shrink-0">
-                <button onClick={goUpDirectory} className="p-2 hover:bg-gray-800 rounded-full transition-all" title="Go Up" aria-label="Go Up Directory"><ArrowUp size={14} className={(!currentPath || currentPath === baseDir) ? "text-gray-600" : "text-gray-300"}/></button>
+            <div className="p-2 border-b theme-border flex items-center gap-2 flex-shrink-0">
+                <button onClick={goUpDirectory} className="p-2 theme-hover rounded-full transition-all" title="Go Up" aria-label="Go Up Directory"><ArrowUp size={14} className={(!currentPath || currentPath === baseDir) ? "text-gray-600" : "theme-text-secondary"}/></button>
                 {isEditingPath ? (
-                    <input type="text" value={editedPath} onChange={(e) => setEditedPath(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { setIsEditingPath(false); setCurrentPath(editedPath); loadDirectoryStructure(editedPath); } else if (e.key === 'Escape') { setIsEditingPath(false); } }} onBlur={() => setIsEditingPath(false)} autoFocus className="text-xs text-gray-400 bg-gray-800 border border-gray-700 rounded px-2 py-1 flex-1"/>
+                    <input type="text" value={editedPath} onChange={(e) => setEditedPath(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { setIsEditingPath(false); setCurrentPath(editedPath); loadDirectoryStructure(editedPath); } else if (e.key === 'Escape') { setIsEditingPath(false); } }} onBlur={() => setIsEditingPath(false)} autoFocus className="text-xs theme-text-muted theme-input border rounded px-2 py-1 flex-1"/>
                  ) : (
-                    <div onClick={() => { setIsEditingPath(true); setEditedPath(currentPath); }} className="text-xs text-gray-400 overflow-hidden overflow-ellipsis whitespace-nowrap cursor-pointer hover:bg-gray-800 px-2 py-1 rounded flex-1" title={currentPath}>
+                    <div onClick={() => { setIsEditingPath(true); setEditedPath(currentPath); }} className="text-xs theme-text-muted overflow-hidden overflow-ellipsis whitespace-nowrap cursor-pointer theme-hover px-2 py-1 rounded flex-1" title={currentPath}>
                         {currentPath || '...'}
                     </div>
                 )}
             </div>
+            {/* --- UPDATED SEARCH AREA --- */}
+            <div className="p-2 border-b theme-border flex flex-col gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2">
+                    <input
+                        ref={searchInputRef}
+                        type="text"
+                        value={searchTerm}
+                        onChange={handleSearchChange}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSearchSubmit();
+                            }
+                        }}
+                        placeholder="Search messages (Ctrl+F)..."
+                        className="flex-grow theme-input text-xs rounded px-2 py-1 border focus:outline-none"
+                    />
+                    <button
+                        onClick={() => {
+                            setSearchTerm('');
+                            setIsSearching(false);
+                            setDeepSearchResults([]);
+                            setMessageSearchResults([]);
+                        }}
+                        className="p-2 theme-hover rounded-full transition-all"
+                        aria-label="Clear Search"
+                    >
+                        <X size={14} className="text-gray-400" />
+                    </button>
+                </div>
+                {/*
+                <div className="flex items-center gap-2 px-1">
+                    <input
+                        type="checkbox"
+                        id="global-search-checkbox"
+                        checked={isGlobalSearch}
+                        onChange={(e) => setIsGlobalSearch(e.target.checked)}
+                        className="w-4 h-4 theme-checkbox"
+                    />
+                <label htmlFor="global-search-checkbox" className="text-xs theme-text-muted cursor-pointer select-none">
+                        Search globally
+                    </label>
+                    
+                </div>*/}
+            </div>
+
             <div className="flex-1 overflow-y-auto px-2 py-2">
-                {loading ? (<div className="p-4 text-gray-500">Loading...</div>) : (
+                {loading ? (
+                    <div className="p-4 theme-text-muted">Loading...</div>
+                ) : isSearching ? (
+                    // In search mode, ONLY show search results or the "no results" message
+                    renderSearchResults()
+                ) : (
+                    // In normal mode, show the files and conversations
                     <>
                         {renderFolderList(folderStructure)}
                         {renderConversationList(directoryConversations)}
-                        {contextMenuPos && renderContextMenu()}
                     </>
                 )}
+                {/* The context menu can live outside the conditional rendering if needed */}
+                {contextMenuPos && renderContextMenu()}
             </div>
-            <div className="p-4 border-t border-gray-700 flex-shrink-0">
+            
+            <div className="p-4 border-t theme-border flex-shrink-0">
                 <div className="flex gap-2 justify-center">
-                    <button onClick={handleImagesClick} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="View Images"><Image size={16} /></button>
-                    <button onClick={handleScreenshotsClick} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="View Screenshots"><Camera size={16} /></button>
-                    <button onClick={() => setJinxMenuOpen(true)} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Open Jinx Menu"><Wrench size={16} /></button>
-                    <button onClick={handleOpenNpcTeamMenu} className="p-2 hover:bg-gray-800 rounded-full transition-all" aria-label="Open NPC Team Menu"><Users size={16} /></button>
+                    <button onClick={handleImagesClick} className="p-2 theme-hover rounded-full transition-all" aria-label="View Images"><Image size={16} /></button>
+                    <button onClick={handleScreenshotsClick} className="p-2 theme-hover rounded-full transition-all" aria-label="View Screenshots"><Camera size={16} /></button>
+                    <button onClick={() => setJinxMenuOpen(true)} className="p-2 theme-hover rounded-full transition-all" aria-label="Open Jinx Menu"><Wrench size={16} /></button>
+                    <button onClick={handleOpenNpcTeamMenu} className="p-2 theme-hover rounded-full transition-all" aria-label="Open NPC Team Menu"><Users size={16} /></button>
                 </div>
             </div>
         </div>
@@ -1150,19 +1712,101 @@ const ChatInterface = () => {
         return entries;
     };
 
+    // --- NEW: Renderer for deep search results ---
+    const renderSearchResults = () => {
+        if (searchLoading) {
+            return <div className="p-4 text-center theme-text-muted">Searching...</div>;
+        }
+
+        if (!deepSearchResults || deepSearchResults.length === 0) {
+            return <div className="p-4 text-center theme-text-muted">No results for "{searchTerm}".</div>;
+        }
+
+        return (
+            <div className="mt-4">
+                <div className="px-4 py-2 text-xs text-gray-500">Search Results ({deepSearchResults.length})</div>
+                {deepSearchResults.map(result => (
+                    <button
+                        key={result.conversationId}
+                        onClick={() => handleSearchResultSelect(result.conversationId, searchTerm)}
+                        className={`flex flex-col gap-1 px-4 py-2 w-full theme-hover text-left rounded-lg transition-all duration-200 ${
+                            activeConversationId === result.conversationId ? 'border-l-2 border-blue-500' : ''
+                        }`}
+                    >
+                        <div className="flex items-center gap-2">
+                            <File size={16} className="text-gray-400 flex-shrink-0" />
+                            <div className="flex flex-col overflow-hidden">
+                                <span className="text-sm truncate font-semibold">{result.conversationTitle || 'Conversation'}</span>
+                                <span className="text-xs text-gray-500">{new Date(result.timestamp).toLocaleString()}</span>
+                            </div>
+                        </div>
+                        <div className="text-xs text-gray-400 pl-6">
+                            {result.matches.length} match{result.matches.length !== 1 ? 'es' : ''}
+                        </div>
+                        {result.matches[0] && (
+                            <div
+                                className="text-xs text-gray-500 pl-6 mt-1 italic truncate"
+                                title={result.matches[0].snippet} // Show full snippet on hover
+                            >
+                                ...{result.matches[0].snippet}...
+                            </div>
+                        )}
+                    </button>
+                ))}
+            </div>
+        );
+    };
+
+
     const renderConversationList = (conversations) => (
         conversations?.length > 0 && (
             <div className="mt-4">
                 <div className="px-4 py-2 text-xs text-gray-500">Conversations ({conversations.length})</div>
                 <div>
-                    {conversations.map((conv) => {
+                    {conversations.map((conv, index) => {
                         const isSelected = selectedConvos?.has(conv.id);
+                        const isLastClicked = lastClickedIndex === index;
+                        
                         return (
                             <button
                                 key={conv.id}
-                                onClick={(e) => { if (e.ctrlKey || e.metaKey) { const newSelected = new Set(selectedConvos || new Set()); if (newSelected.has(conv.id)) { newSelected.delete(conv.id); } else { newSelected.add(conv.id); } setSelectedConvos(newSelected); } else { setSelectedConvos(new Set([conv.id])); handleConversationSelect(conv.id); } }}
-                                onContextMenu={(e) => { e.preventDefault(); if (!selectedConvos?.has(conv.id)) { setSelectedConvos(new Set([conv.id])); } setContextMenuPos({ x: e.clientX, y: e.clientY }); }}
-                                className={`flex items-center gap-2 px-4 py-2 w-full hover:bg-gray-800 text-left rounded-lg transition-all ${isSelected ? 'bg-gray-700' : ''} ${activeConversationId === conv.id ? 'border-l-2 border-blue-500' : ''}`}
+                                onClick={(e) => { 
+                                    if (e.ctrlKey || e.metaKey) { 
+                                        const newSelected = new Set(selectedConvos || new Set()); 
+                                        if (newSelected.has(conv.id)) { 
+                                            newSelected.delete(conv.id); 
+                                        } else { 
+                                            newSelected.add(conv.id); 
+                                        } 
+                                        setSelectedConvos(newSelected);
+                                        setLastClickedIndex(index);
+                                    } else if (e.shiftKey && lastClickedIndex !== null) {
+                                        // Shift + Click range selection
+                                        const newSelected = new Set();
+                                        const start = Math.min(lastClickedIndex, index);
+                                        const end = Math.max(lastClickedIndex, index);
+                                        for (let i = start; i <= end; i++) {
+                                            if (conversations[i]) {
+                                                newSelected.add(conversations[i].id);
+                                            }
+                                        }
+                                        setSelectedConvos(newSelected);
+                                    } else { 
+                                        setSelectedConvos(new Set([conv.id])); 
+                                        handleConversationSelect(conv.id);
+                                        setLastClickedIndex(index);
+                                    } 
+                                }}
+                                onContextMenu={(e) => { 
+                                    e.preventDefault(); 
+                                    if (!selectedConvos?.has(conv.id)) { 
+                                        setSelectedConvos(new Set([conv.id])); 
+                                    } 
+                                    setContextMenuPos({ x: e.clientX, y: e.clientY }); 
+                                }}
+                                className={`flex items-center gap-2 px-4 py-2 w-full theme-hover text-left rounded-lg transition-all duration-200
+                                    ${isSelected ? 'conversation-selected' : 'theme-text-primary'}
+                                    ${activeConversationId === conv.id ? 'border-l-2 border-blue-500' : ''}`}
                             >
                                 <File size={16} className="text-gray-400 flex-shrink-0" />
                                 <div className="flex flex-col overflow-hidden">
@@ -1184,15 +1828,24 @@ const ChatInterface = () => {
                 style={{ top: contextMenuPos.y, left: contextMenuPos.x }}
                 onMouseLeave={() => setContextMenuPos(null)}
             >
-                <button onClick={handleSummarizeAndStart} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 w-full text-left">
+                <button
+                    onClick={() => handleSummarizeAndStart()}
+                    className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 w-full text-left"
+                >
                     <MessageSquare size={16} />
                     <span>Summarize & Start ({selectedConvos?.size || 0})</span>
                 </button>
-                <button onClick={handleSummarizeAndDraft} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 w-full text-left">
+                <button
+                    onClick={() => handleSummarizeAndDraft()}
+                    className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 w-full text-left"
+                >
                     <Edit size={16} />
                     <span>Summarize & Draft ({selectedConvos?.size || 0})</span>
                 </button>
-                <button onClick={handleSummarizeAndPrompt} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 w-full text-left">
+                <button
+                    onClick={() => handleSummarizeAndPrompt()}
+                    className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 w-full text-left"
+                >
                     <MessageSquare size={16} />
                     <span>Summarize & Prompt ({selectedConvos?.size || 0})</span>
                 </button>
@@ -1214,37 +1867,98 @@ const ChatInterface = () => {
             </div>
         </div>
     );
-
     const renderChatView = () => (
         <div className="flex-1 flex flex-col min-h-0">
-            <div className="p-2 border-b border-gray-700 text-xs text-gray-500 flex-shrink-0">
+            <div className="p-2 border-b theme-border text-xs theme-text-muted flex-shrink-0 theme-bg-secondary">
                 <div>Active Conversation: {activeConversationId || 'None'}</div>
                 <div>Messages Count: {messages.length}</div>
                 <div>Current Path: {currentPath}</div>
+    
+                <div className="flex items-center gap-2">
+                {messageSelectionMode && selectedMessages.size > 0 && (
+                    <span className="text-blue-400 text-xs">
+                        {selectedMessages.size} message{selectedMessages.size === 1 ? '' : 's'} selected
+                    </span>
+                )}
+                <button
+                    onClick={toggleMessageSelectionMode}
+                    className={`px-3 py-1 rounded text-xs transition-all ${
+                        messageSelectionMode
+                            ? 'theme-button-primary'
+                            : 'theme-button theme-hover'
+                    }`}
+                    title={messageSelectionMode ? 'Exit selection mode' : 'Enter selection mode'}
+                >
+                    <ListFilter size={14} className="inline mr-1" />
+                    {messageSelectionMode ? 'Exit Select' : 'Select Messages'}
+                </button>
             </div>
+    
+            </div>
+    
+            <div className="flex-1 overflow-y-auto space-y-4 p-4 theme-bg-primary">
+                {/* Search Results Display */}
+                {messageSearchResults.length > 0 && (
+                    <div className="sticky top-0 z-10 theme-bg-secondary p-2 rounded-md border theme-border shadow-md mb-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm theme-text-primary">
+                                Found {messageSearchResults.length} result{messageSearchResults.length === 1 ? '' : 's'} for "{searchTerm}"
+                            </span>
+                            <button 
+                                onClick={() => {
+                                    setMessageSearchResults([]);
+                                    setActiveSearchResult(null);
+                                }}
+                                className="theme-hover rounded-full p-1"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                        <div className="flex gap-2 mt-2 flex-wrap">
+                            {messageSearchResults.map((result, index) => (
+                                <button
+                                    key={result.messageId}
+                                    onClick={() => {
+                                        setActiveSearchResult(result.messageId);
+                                        const messageElement = document.getElementById(`message-${result.messageId}`);
+                                        if (messageElement) {
+                                            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                        }
+                                    }}
+                                    className={`text-xs px-2 py-1 rounded ${
+                                        activeSearchResult === result.messageId
+                                            ? 'theme-button-primary'
+                                            : 'theme-button theme-hover'
+                                    }`}
+                                >
+                                    Result {index + 1}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
-            <div className="flex-1 overflow-y-auto space-y-4 p-4">
                 {/* Prompt Modal Rendering */}
                 {promptModal.isOpen && (
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-40 p-4">
-                        <div className="bg-gray-800 p-6 border border-gray-700 rounded-lg shadow-xl max-w-lg w-full">
-                            <h3 className="text-lg font-medium mb-3">{promptModal.title}</h3>
-                            <p className="text-gray-400 mb-4 text-sm">{promptModal.message}</p>
+                        <div className="theme-bg-secondary p-6 theme-border border rounded-lg shadow-xl max-w-lg w-full">
+                            <h3 className="text-lg font-medium mb-3 theme-text-primary">{promptModal.title}</h3>
+                            <p className="theme-text-muted mb-4 text-sm">{promptModal.message}</p>
                             <textarea
-                                className="w-full h-48 bg-gray-900 border border-gray-700 rounded p-2 mb-4 text-gray-100 font-mono text-sm"
+                                className="w-full h-48 theme-input border rounded p-2 mb-4 font-mono text-sm"
                                 defaultValue={promptModal.defaultValue}
                                 id="promptInputModal"
                                 autoFocus
                             />
                             <div className="flex justify-end gap-3">
                                 <button
-                                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+                                    className="px-4 py-2 theme-button theme-hover rounded text-sm"
                                     onClick={() => setPromptModal({ ...promptModal, isOpen: false })}
                                 >
                                     Cancel
                                 </button>
                                 <button
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm"
+                                    className="px-4 py-2 theme-button-primary rounded text-sm"
                                     onClick={() => {
                                         const value = document.getElementById('promptInputModal').value;
                                         promptModal.onConfirm?.(value);
@@ -1257,14 +1971,14 @@ const ChatInterface = () => {
                         </div>
                     </div>
                 )}
-
+    
                 {/* Message List with Lazy Loading */}
                 {!activeConversationId ? (
-                    <div className="flex items-center justify-center h-full text-gray-500">
+                    <div className="flex items-center justify-center h-full theme-text-muted">
                         Select or create a conversation
                     </div>
                 ) : allMessages.length === 0 ? (
-                    <div className="text-center text-gray-500 pt-10">
+                    <div className="text-center theme-text-muted pt-10">
                         No messages in this conversation
                     </div>
                 ) : (
@@ -1272,13 +1986,13 @@ const ChatInterface = () => {
                         {/* Load More Button - only shown if more than 10 messages */}
                         {allMessages.length > displayedMessageCount && (
                             <div className="flex justify-center mb-4">
-                                <button 
+                                <button
                                     onClick={async () => {
                                         setLoadingMoreMessages(true);
                                         try {
                                             // Simulate loading more messages
                                             await new Promise(resolve => setTimeout(resolve, 500));
-                                            
+    
                                             // Increase the count of displayed messages
                                             setDisplayedMessageCount(prev => prev + 10);
                                         } catch (err) {
@@ -1287,122 +2001,149 @@ const ChatInterface = () => {
                                             setLoadingMoreMessages(false);
                                         }
                                     }} // This would be replaced with actual pagination logic
-                                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md text-sm"
+                                    className="px-4 py-2 theme-button theme-hover rounded-md text-sm"
                                 >
                                     {loadingMoreMessages ? 'Loading...' : `Load Previous Messages (${allMessages.length - displayedMessageCount} more)`}
                                 </button>
                             </div>
                         )}
-                        
+    
                         {/* Only show the number of messages specified by displayedMessageCount */}
                         {allMessages.slice(0, displayedMessageCount).map((message) => {
                             const showStreamingIndicators = !!message.isStreaming;
-                            
+                            const messageId = message.id || message.timestamp;
+                            const isSelected = selectedMessages.has(messageId);
+    
+    
                             return (
+                                // FIX 1: Added the required "key" prop to the root element in the map.
                                 <div
-                                    key={message.id ?? message.timestamp}
-                                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                                >
-                                    <div className={`max-w-[85%] rounded-lg p-3 ${
+                                    key={messageId}
+                                    id={`message-${messageId}`}
+                                    className={`max-w-[85%] rounded-lg p-3 relative ${
                                         message.role === 'user'
-                                            ? 'bg-blue-800 text-white'
-                                            : 'bg-gray-800 text-gray-200'
-                                        } ${message.type === 'error' ? 'bg-red-900 border border-red-700' : ''}`}
-                                    >
-                                        {/* Message header */}
-                                        <div className="text-xs text-gray-400 mb-1 opacity-80">
-                                            {message.role === 'user' ? 'You' : (message.npc || message.model || 'Assistant')}
-                                            <span className="ml-2">
-                                                {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
+                                            ? 'theme-message-user'
+                                            : 'theme-message-assistant'
+                                        } ${message.type === 'error' ? 'theme-message-error theme-border' : ''} ${
+                                        isSelected ? 'ring-2 ring-blue-500' : ''
+                                    } ${activeSearchResult === messageId ? 'ring-2 ring-yellow-500' : ''} ${messageSelectionMode ? 'cursor-pointer' : ''}`}
+                                    onClick={() => messageSelectionMode && toggleMessageSelection(messageId)}
+                                    onContextMenu={(e) => handleMessageContextMenu(e, messageId)}
+                                >
+                                    {messageSelectionMode && (
+                                        <div className="absolute top-2 right-2 z-10">
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => toggleMessageSelection(messageId)}
+                                                className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
                                         </div>
-                    
-                                        {/* Message content Area */}
-                                        <div className="relative message-content-area">
-                                            {/* Bouncing dots shown above the message only when streaming */}
-                                            {showStreamingIndicators && (
-                                                <div className="absolute top-0 left-0 -translate-y-full flex space-x-1 mb-1">
-                                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
-                                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
-                                                    <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
-                                                </div>
-                                            )}
-                    
-                                            {/* Reasoning Content (Thoughts) Section */}
-                                            {message.reasoningContent && (
-                                                <div className="mb-3 px-3 py-2 bg-gray-700 rounded-md border-l-2 border-yellow-500">
-                                                    <div className="text-xs text-yellow-400 mb-1 font-semibold">Thinking Process:</div>
-                                                    <div className="prose prose-sm prose-invert max-w-none text-gray-300 text-sm">
-                                                        <MarkdownRenderer content={message.reasoningContent || ''} />
-                                                    </div>
-                                                </div>
-                                            )}
-                    
-                                            {/* Main Content */}
-                                            <div className="prose prose-sm prose-invert max-w-none">
-                                                <MarkdownRenderer content={message.content || ''} />
-                                                {showStreamingIndicators && message.type !== 'error' && (
-                                                    <span className="ml-1 inline-block w-0.5 h-4 bg-gray-300 animate-pulse stream-cursor"></span>
-                                                )}
-                                            </div>
-                    
-                                            {/* LLM tool Calls Section */}
-                                            {message.toolCalls && message.toolCalls.length > 0 && (
-                                                <div className="mt-3 px-3 py-2 bg-gray-700 rounded-md border-l-2 border-blue-500">
-                                                    <div className="text-xs text-blue-400 mb-1 font-semibold">Function Calls:</div>
-                                                    {message.toolCalls.map((tool, idx) => (
-                                                        <div key={idx} className="mb-2 last:mb-0">
-                                                            <div className="text-blue-300 text-sm">
-                                                                {tool.function_name || tool.function?.name || "Function"}
-                                                            </div>
-                                                            <pre className="bg-gray-900 p-2 rounded text-xs overflow-x-auto my-1">
-                                                                {JSON.stringify(
-                                                                    tool.arguments || tool.function?.arguments || {}, 
-                                                                    null, 2
-                                                                )}
-                                                            </pre>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                    
-                                            {/* Attachments */}
-                                            {message.attachments?.length > 0 && (
-                                                <div className="mt-2 flex flex-wrap gap-2 border-t border-gray-700 pt-2">
-                                                    {message.attachments.map((attachment, idx) => (
-                                                        <div key={idx} className="text-xs bg-gray-700 rounded px-2 py-1 flex items-center gap-1">
-                                                            <Paperclip size={12} className="flex-shrink-0" />
-                                                            <span className="truncate" title={attachment.name}>{attachment.name}</span>
-                                                            {/* Add image preview if data exists and is an image */}
-                                                            {attachment.data && attachment.name?.match(/\.(jpg|jpeg|png|gif|webp)$/i) && (
-                                                                <img
-                                                                    src={attachment.data} // Assuming base64 data URL
-                                                                    alt={attachment.name}
-                                                                    className="mt-1 max-w-[100px] max-h-[100px] rounded-md object-cover"
-                                                                />
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div> {/* End message-content-area */}
+                                    )}
+    
+                                    {/* Message header */}
+                                    <div className="text-xs theme-text-muted mb-1 opacity-80">
+                                        {message.role === 'user' ? 'You' : (message.npc || message.model || 'Assistant')}
+                                        <span className="ml-2">
+                                            {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
                                     </div>
+    
+                                    {/* Message content Area */}
+                                    <div className="relative message-content-area">
+                                        {/* Bouncing dots shown above the message only when streaming */}
+                                        {showStreamingIndicators && (
+                                            <div className="absolute top-0 left-0 -translate-y-full flex space-x-1 mb-1">
+                                                <div className="w-1.5 h-1.5 theme-text-muted rounded-full animate-bounce"></div>
+                                                <div className="w-1.5 h-1.5 theme-text-muted rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
+                                                <div className="w-1.5 h-1.5 theme-text-muted rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
+                                            </div>
+                                        )}
+    
+                                        {/* Reasoning Content (Thoughts) Section */}
+                                        {message.reasoningContent && (
+                                            <div className="mb-3 px-3 py-2 theme-bg-tertiary rounded-md border-l-2 border-yellow-500">
+                                                <div className="text-xs text-yellow-400 mb-1 font-semibold">Thinking Process:</div>
+                                                <div className="prose prose-sm prose-invert max-w-none theme-text-secondary text-sm">
+                                                    <MarkdownRenderer content={message.reasoningContent || ''} />
+                                                </div>
+                                            </div>
+                                        )}
+    
+                                        {/* Main Content - with highlighted search term if needed */}
+                                        <div className="prose prose-sm prose-invert max-w-none theme-text-primary">
+                                            {searchTerm && message.content ? (
+                                                <MarkdownRenderer 
+                                                    content={highlightSearchTerm(message.content, searchTerm)} 
+                                                />
+                                            ) : (
+                                                <MarkdownRenderer content={message.content || ''} />
+                                            )}
+                                            {showStreamingIndicators && message.type !== 'error' && (
+                                                <span className="ml-1 inline-block w-0.5 h-4 theme-text-primary animate-pulse stream-cursor"></span>
+                                            )}
+                                        </div>
+    
+                                        {/* LLM tool Calls Section */}
+                                        {message.toolCalls && message.toolCalls.length > 0 && (
+                                            <div className="mt-3 px-3 py-2 theme-bg-tertiary rounded-md border-l-2 border-blue-500">
+                                                <div className="text-xs text-blue-400 mb-1 font-semibold">Function Calls:</div>
+                                                {message.toolCalls.map((tool, idx) => (
+                                                    <div key={idx} className="mb-2 last:mb-0">
+                                                        <div className="text-blue-300 text-sm">
+                                                            {tool.function_name || tool.function?.name || "Function"}
+                                                        </div>
+                                                        <pre className="theme-bg-primary p-2 rounded text-xs overflow-x-auto my-1 theme-text-secondary">
+                                                            {JSON.stringify(
+                                                                tool.arguments || tool.function?.arguments || {},
+                                                                null, 2
+                                                            )}
+                                                        </pre>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+    
+                                        {/* Attachments */}
+                                        {message.attachments?.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-2 border-t theme-border pt-2">
+                                                {message.attachments.map((attachment, idx) => (
+                                                    <div key={idx} className="text-xs theme-bg-tertiary rounded px-2 py-1 flex items-center gap-1">
+                                                        <Paperclip size={12} className="flex-shrink-0" />
+                                                        <span className="truncate" title={attachment.name}>{attachment.name}</span>
+                                                        {/* Add image preview if data exists and is an image */}
+                                                        {attachment.data && attachment.name?.match(/\.(jpg|jpeg|png|gif|webp)$/i) && (
+                                                            <img
+                                                                src={attachment.data} // Assuming base64 data URL
+                                                                alt={attachment.name}
+                                                                className="mt-1 max-w-[100px] max-h-[100px] rounded-md object-cover"
+                                                            />
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div> {/* End message-content-area */}
                                 </div>
+                                // FIX 2: Removed the extra, unmatched closing </div> tag from here.
                             );
                         })}
                     </>
                 )}
-            </div> {/* End message list container */}
-
+            </div>
+    
+    
+    
             {/* Uploaded files preview */}
             {uploadedFiles.length > 0 && (
-                 <div className="px-4 pt-2 flex gap-2 flex-wrap border-t border-gray-700 max-h-28 overflow-y-auto bg-gray-800 flex-shrink-0">
+                 <div className="px-4 pt-2 flex gap-2 flex-wrap border-t theme-border max-h-28 overflow-y-auto theme-bg-secondary flex-shrink-0">
                     {uploadedFiles.map(file => (
                         <div key={file.id} className="relative flex-shrink-0 mb-2">
                             <img
                                 src={file.preview || `file://${file.path}`} // Use file protocol for local paths if no preview
                                 alt={file.name}
-                                className="w-16 h-16 object-cover rounded border border-gray-600"
+                                className="w-16 h-16 object-cover rounded theme-border border"
                                 // Add error handling for broken images if needed
                                 onError={(e) => { e.target.style.display = 'none'; /* Hide broken image icon */ }}
                             />
@@ -1411,7 +2152,7 @@ const ChatInterface = () => {
                                     setUploadedFiles(prev => prev.filter(f => f.id !== file.id));
                                     if (file.preview) URL.revokeObjectURL(file.preview);
                                 }}
-                                className="absolute -top-1 -right-1 bg-red-600 hover:bg-red-500 text-white rounded-full p-0.5 leading-none flex items-center justify-center w-4 h-4"
+                                className="absolute -top-1 -right-1 theme-button-danger text-white rounded-full p-0.5 leading-none flex items-center justify-center w-4 h-4"
                                 aria-label="Remove file"
                             >
                                 <X size={10} strokeWidth={3} />
@@ -1420,16 +2161,70 @@ const ChatInterface = () => {
                     ))}
                 </div>
             )}
-
+    
             {renderInputArea()}
+    
+            {/* Message Context Menu */}
+            {messageContextMenuPos && (
+                <div
+                    className="fixed theme-bg-secondary theme-border border rounded shadow-lg py-1 z-50"
+                    style={{ top: messageContextMenuPos.y, left: messageContextMenuPos.x }}
+                    onMouseLeave={() => setMessageContextMenuPos(null)}
+                >
+                    <button
+                        onClick={() => handleApplyPromptToMessages('summarize')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <MessageSquare size={16} />
+                        <span>Summarize in New Conversation ({selectedMessages.size})</span>
+                    </button>
+                    <button
+                        onClick={() => handleApplyPromptToCurrentConversation('summarize')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <MessageSquare size={16} />
+                        <span>Summarize in Input Field ({selectedMessages.size})</span>
+                    </button>
+                    <div className="border-t theme-border my-1"></div>
+                    <button
+                        onClick={() => handleApplyPromptToMessages('analyze')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <Edit size={16} />
+                        <span>Analyze in New Conversation ({selectedMessages.size})</span>
+                    </button>
+                    <button
+                        onClick={() => handleApplyPromptToCurrentConversation('analyze')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <Edit size={16} />
+                        <span>Analyze in Input Field ({selectedMessages.size})</span>
+                    </button>
+                    <div className="border-t theme-border my-1"></div>
+                    <button
+                        onClick={() => handleApplyPromptToMessages('extract')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <FileText size={16} />
+                        <span>Extract in New Conversation ({selectedMessages.size})</span>
+                    </button>
+                    <button
+                        onClick={() => handleApplyPromptToCurrentConversation('extract')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <FileText size={16} />
+                        <span>Extract in Input Field ({selectedMessages.size})</span>
+                    </button>
+                </div>
+            )}
         </div>
     );
 
 
     const renderInputArea = () => (
-        <div className="px-4 pt-2 pb-3 border-t border-gray-700 bg-gray-800 flex-shrink-0">
+        <div className="px-4 pt-2 pb-3 border-t theme-border theme-bg-secondary flex-shrink-0">
             <div
-                className="relative bg-gray-900 border border-gray-700 rounded-lg group"
+                className="relative theme-bg-primary theme-border border rounded-lg group"
                 onDragOver={(e) => { e.preventDefault(); setIsHovering(true); }}
                 onDragEnter={() => setIsHovering(true)}
                 onDragLeave={() => setIsHovering(false)}
@@ -1465,7 +2260,7 @@ const ChatInterface = () => {
                             }
                         }}
                         placeholder={isStreaming ? "Streaming response..." : "Type a message or drop files..."}
-                        className={`flex-grow bg-[#0b0c0f] text-sm text-gray-300 rounded-lg px-4 py-3 placeholder-gray-600 focus:outline-none border-0 min-h-[56px] max-h-[200px] resize-none ${isStreaming ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        className={`flex-grow theme-input text-sm rounded-lg px-4 py-3 focus:outline-none border-0 min-h-[56px] max-h-[200px] resize-none ${isStreaming ? 'opacity-70 cursor-not-allowed' : ''}`}
                         rows={1}
                         style={{ overflowY: 'auto' }}
                         disabled={isStreaming} // Disable input while streaming
@@ -1473,7 +2268,7 @@ const ChatInterface = () => {
                     <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className={`p-2 text-gray-400 hover:text-gray-200 rounded-lg hover:bg-gray-700 flex-shrink-0 ${isStreaming ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`p-2 theme-text-muted hover:theme-text-primary rounded-lg theme-hover flex-shrink-0 ${isStreaming ? 'opacity-50 cursor-not-allowed' : ''}`}
                         aria-label="Attach file"
                         disabled={isStreaming} // Disable attach while streaming
                     >
@@ -1485,7 +2280,7 @@ const ChatInterface = () => {
                         <button
                             type="button"
                             onClick={handleInterruptStream} // Call the interrupt handler
-                            className="bg-red-600 hover:bg-red-500 text-white rounded-lg px-4 py-2 text-sm flex items-center justify-center gap-1 flex-shrink-0 w-[76px] h-[40px]" // Fixed width/height for consistency
+                            className="theme-button-danger text-white rounded-lg px-4 py-2 text-sm flex items-center justify-center gap-1 flex-shrink-0 w-[76px] h-[40px]" // Fixed width/height for consistency
                             aria-label="Stop generating"
                             title="Stop generating"
                         >
@@ -1498,7 +2293,7 @@ const ChatInterface = () => {
                             type="button" // Changed from submit since we handle via handleInputSubmit on Enter/Click
                             onClick={handleInputSubmit} // Call submit handler on click too
                             disabled={(!input.trim() && uploadedFiles.length === 0) || !activeConversationId}
-                            className="bg-green-600 hover:bg-green-500 text-white rounded-lg px-4 py-2 text-sm flex items-center justify-center gap-1 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed w-[76px] h-[40px]" // Fixed width/height
+                            className="theme-button-success text-white rounded-lg px-4 py-2 text-sm flex items-center justify-center gap-1 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed w-[76px] h-[40px]" // Fixed width/height
                         >
                             <Send size={16}/>
                         </button>
@@ -1510,7 +2305,7 @@ const ChatInterface = () => {
                     <select
                         value={currentModel || ''}
                         onChange={e => setCurrentModel(e.target.value)}
-                        className="bg-gray-800 text-xs rounded px-2 py-1 border border-gray-700 flex-grow disabled:cursor-not-allowed"
+                        className="theme-input text-xs rounded px-2 py-1 border flex-grow disabled:cursor-not-allowed"
                         disabled={modelsLoading || !!modelsError || isStreaming} // Disable while streaming
                     >
                         {modelsLoading && <option value="">Loading...</option>}
@@ -1521,7 +2316,7 @@ const ChatInterface = () => {
                     <select
                         value={currentNPC || ''}
                         onChange={e => setCurrentNPC(e.target.value)}
-                        className="bg-gray-800 text-xs rounded px-2 py-1 border border-gray-700 flex-grow disabled:cursor-not-allowed"
+                        className="theme-input text-xs rounded px-2 py-1 border flex-grow disabled:cursor-not-allowed"
                         disabled={npcsLoading || !!npcsError || isStreaming} // Disable while streaming
                     >
                         {npcsLoading && <option value="">Loading NPCs...</option>}

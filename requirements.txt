@@ -4,4 +4,3 @@ flask_sse
 redis
 pyyaml
 pillow
-npcpy

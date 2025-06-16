@@ -4,12 +4,31 @@ import { File, MessageSquarePlus, ListFilter } from 'lucide-react';
 const ConversationList = ({ conversations, onConversationSelect, activeConversationId }) => {
     const [selectedConvos, setSelectedConvos] = useState(new Set());
     const [contextMenuPos, setContextMenuPos] = useState(null);
+    const [lastClickedIndex, setLastClickedIndex] = useState(null);
 
     const handleClick = (conv, e) => {
-        e.preventDefault();
-        e.stopPropagation();
+        const currentIndex = conversations.findIndex(c => c.id === conv.id);
 
-        if (e.ctrlKey || e.metaKey) {
+        if (e.shiftKey && lastClickedIndex !== null) {
+            // Shift+click: select range and navigate to clicked item
+            e.preventDefault();
+            e.stopPropagation();
+            const start = Math.min(lastClickedIndex, currentIndex);
+            const end = Math.max(lastClickedIndex, currentIndex);
+            const newSelected = new Set(selectedConvos);
+            
+            for (let i = start; i <= end; i++) {
+                if (conversations[i]) {
+                    newSelected.add(conversations[i].id);
+                }
+            }
+            setSelectedConvos(newSelected);
+            // Navigate to the clicked conversation
+            onConversationSelect(conv.id);
+        } else if (e.ctrlKey || e.metaKey) {
+            // Ctrl+click: toggle individual selection but don't navigate
+            e.preventDefault();
+            e.stopPropagation();
             const newSelected = new Set(selectedConvos);
             if (newSelected.has(conv.id)) {
                 newSelected.delete(conv.id);
@@ -17,9 +36,13 @@ const ConversationList = ({ conversations, onConversationSelect, activeConversat
                 newSelected.add(conv.id);
             }
             setSelectedConvos(newSelected);
+            setLastClickedIndex(currentIndex);
+            // Don't navigate on ctrl+click, just select
         } else {
+            // Regular click: clear selection, select single item and navigate
             setSelectedConvos(new Set([conv.id]));
             onConversationSelect(conv.id);
+            setLastClickedIndex(currentIndex);
         }
     };
 
@@ -44,37 +67,41 @@ const ConversationList = ({ conversations, onConversationSelect, activeConversat
 
     return (
         <div onContextMenu={handleContextMenu} className="relative">
-            {conversations.map((conv) => (
-                <button
-                    key={conv.id}
-                    onClick={(e) => handleClick(conv, e)}
-                    onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (!selectedConvos.has(conv.id)) {
-                            setSelectedConvos(new Set([conv.id]));
-                        }
-                        setContextMenuPos({ x: e.clientX, y: e.clientY });
-                    }}
-                    className={`flex items-center gap-2 px-2 py-1 w-full hover:bg-gray-800 text-left
-                        ${selectedConvos.has(conv.id) ? 'bg-gray-700' : ''}
-                        ${activeConversationId === conv.id ? 'border-l-2 border-blue-500' : ''}`}
-                >
-                    <File size={16} className="text-gray-400" />
-                    <div className="flex flex-col">
-                        <span className="text-sm truncate">
-                            {conv.title || conv.id}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                            {new Date(conv.timestamp).toLocaleString()}
-                        </span>
-                    </div>
-                </button>
-            ))}
+            {conversations.map((conv) => {
+                const isSelected = selectedConvos.has(conv.id);
+                
+                return (
+                    <button
+                        key={conv.id}
+                        onClick={(e) => handleClick(conv, e)}
+                        onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!selectedConvos.has(conv.id)) {
+                                setSelectedConvos(new Set([conv.id]));
+                            }
+                            setContextMenuPos({ x: e.clientX, y: e.clientY });
+                        }}
+                        className={`flex items-center gap-2 px-2 py-1 w-full theme-hover text-left transition-all duration-200
+                            ${isSelected ? 'conversation-selected' : 'theme-text-primary'}
+                            ${activeConversationId === conv.id ? 'border-l-2 border-blue-500' : ''}`}
+                    >
+                        <File size={16} className="theme-text-muted" />
+                        <div className="flex flex-col">
+                            <span className="text-sm truncate">
+                                {conv.title || conv.id}
+                            </span>
+                            <span className="text-xs theme-text-muted">
+                                {new Date(conv.timestamp).toLocaleString()}
+                            </span>
+                        </div>
+                    </button>
+                );
+            })}
 
             {contextMenuPos && (
                 <div
-                    className="fixed bg-gray-900 border border-gray-700 rounded shadow-lg py-1 z-50"
+                    className="fixed theme-bg-secondary theme-border border rounded shadow-lg py-1 z-50"
                     style={{
                         top: contextMenuPos.y,
                         left: contextMenuPos.x
@@ -83,10 +110,9 @@ const ConversationList = ({ conversations, onConversationSelect, activeConversat
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            console.log('Summarize selected:', Array.from(selectedConvos));
                             setContextMenuPos(null);
                         }}
-                        className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 w-full text-left"
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
                     >
                         <MessageSquarePlus size={16} />
                         <span>Summarize Selected ({selectedConvos.size})</span>
@@ -94,10 +120,9 @@ const ConversationList = ({ conversations, onConversationSelect, activeConversat
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            console.log('Custom aggregation for:', Array.from(selectedConvos));
                             setContextMenuPos(null);
                         }}
-                        className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 w-full text-left"
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
                     >
                         <ListFilter size={16} />
                         <span>Custom Aggregation...</span>
