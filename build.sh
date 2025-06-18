@@ -19,6 +19,7 @@ EOF
 
 pyinstaller --onefile \
   --clean \
+  --distpath pyinstaller_dist \
   --noupx \
   --exclude-module=matplotlib \
   --exclude-module=scipy \
@@ -45,7 +46,8 @@ pyinstaller --onefile \
   npc_studio_serve.py
 
 # Copy PyInstaller output to resources directory
-cp ./dist/npc_studio_serve ./dist/resources/backend/
+mkdir -p ./dist/resources/backend
+cp ./pyinstaller_dist/npc_studio_serve ./dist/resources/backend/
 
 
 ### uncomment above if you make changes to the backend
@@ -55,13 +57,9 @@ cp ./dist/npc_studio_serve ./dist/resources/backend/
 
 
 echo "==== Building npc-studio ===="
-# cd ~/npcww/npc-studio
 
 # Create directory structure for our resources
-mkdir -p ./dist/resources/backend
-
-# Copy PyInstaller output to resources directory - correct path
-
+# mkdir -p ./dist/resources/backend - Moved above to ensure directory exists before copy
 
 # Copy requirements file
 cp requirements.txt ./dist/resources/

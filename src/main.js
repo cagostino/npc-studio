@@ -486,7 +486,7 @@ if (!gotTheLock) {
       console.log(`Loading from packaged app path: ${htmlPath}`);
     }
   
-    mainWindow.webContents.openDevTools();
+    //mainWindow.webContents.openDevTools();
 
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
       console.error('Failed to load:', errorCode, errorDescription);
