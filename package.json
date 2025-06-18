@@ -1,7 +1,7 @@
 {
   "name": "npc-studio",
-  "version": "0.0.5",
-  "description": "The premier interface for the npcsh interpreter.",
+  "version": "0.0.1",
+  "description": "The premier AI IDE powered by the NPC Toolkit.",
   "author": "Chris Agostino <info@npcworldwi.de>",
   "main": "src/main.js",
   "files": [
