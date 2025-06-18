@@ -20,10 +20,11 @@ contextBridge.exposeInMainWorld('api', {
     waitForScreenshot: (path) => ipcRenderer.invoke('wait-for-screenshot', path),
     saveNPC: (data) => ipcRenderer.invoke('save-npc', data),
 
-    // Add these to your window.api exposed functions
+    // File operations
     readFileContent: (filePath) => ipcRenderer.invoke('read-file-content', filePath),
     writeFileContent: (filePath, content) => ipcRenderer.invoke('write-file-content', filePath, content),
     deleteFile: (filePath) => ipcRenderer.invoke('delete-file', filePath),
+    renameFile: (oldPath, newPath) => ipcRenderer.invoke('renameFile', oldPath, newPath),
 
 // Command operations
     executeCommand: (data) => ipcRenderer.invoke('executeCommand', {

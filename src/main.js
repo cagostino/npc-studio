@@ -1332,3 +1332,14 @@ app.on('window-all-closed', () => {
 
   console.log('MAIN PROCESS SETUP COMPLETE');
 }
+
+// Add file rename functionality
+  ipcMain.handle('renameFile', async (_, oldPath, newPath) => {
+    try {
+      await fsPromises.rename(oldPath, newPath);
+      return { success: true, error: null };
+    } catch (err) {
+      console.error('Error renaming file:', err);
+      return { success: false, error: err.message };
+    }
+  });

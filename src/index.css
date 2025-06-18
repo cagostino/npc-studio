@@ -349,7 +349,244 @@ body.light-mode ::-webkit-scrollbar-thumb:hover {
     background: var(--theme-text-muted);
 }
 
-/* Markdown content styling - ensure proper colors in both themes */
+/* Enhanced markdown content styling with MUCH better contrast for dark mode */
+.prose {
+    max-width: none !important;
+    text-align: left !important; /* Remove justification */
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+    color: #f8fafc !important; /* Much brighter white for dark mode */
+    margin-top: 1.5em !important;
+    margin-bottom: 0.5em !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+}
+
+.prose p {
+    color: #e2e8f0 !important; /* Much brighter text for dark mode */
+    margin-bottom: 1em !important;
+    line-height: 1.6 !important;
+    text-align: left !important; /* Remove justification */
+    text-justify: none !important;
+}
+
+.prose strong {
+    color: #f1f5f9 !important; /* Very bright for emphasis */
+    font-weight: 700 !important;
+}
+
+.prose em {
+    color: #cbd5e1 !important; /* Bright secondary text */
+    font-style: italic !important;
+}
+
+.prose code {
+    color: #f1f5f9 !important; /* Very bright for inline code */
+    background-color: #1e293b !important;
+    padding: 2px 4px !important; /* Smaller padding */
+    border-radius: 3px !important; /* Smaller radius */
+    font-size: 0.85em !important; /* Smaller font */
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+    border: 1px solid #475569 !important;
+    display: inline !important; /* Ensure inline display */
+    white-space: nowrap !important; /* Prevent wrapping */
+}
+
+.prose pre {
+    background-color: #0f172a !important; /* Darker background for contrast */
+    color: #e2e8f0 !important; /* Bright text */
+    padding: 0.8em !important; /* Less padding */
+    border-radius: 6px !important;
+    overflow-x: auto !important;
+    border: 1px solid #475569 !important;
+    margin: 0.8em 0 !important; /* Less margin */
+    font-size: 0.85em !important; /* Smaller font */
+}
+
+.prose pre code {
+    background-color: transparent !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    font-size: inherit !important; /* Use parent font size */
+    color: #f1f5f9 !important; /* Very bright for code blocks */
+    white-space: pre !important; /* Preserve formatting */
+    display: block !important;
+}
+
+.prose blockquote {
+    border-left: 4px solid #3b82f6 !important; /* Bright blue accent */
+    padding: 0.6em 1em !important; /* Less padding */
+    margin: 1em 0 !important; /* Less margin */
+    color: #cbd5e1 !important; /* Bright secondary text */
+    background-color: #1e293b !important;
+    border-radius: 4px !important;
+    font-style: italic !important;
+}
+
+.prose ul, .prose ol {
+    color: #e2e8f0 !important; /* Much brighter for lists */
+    padding-left: 1.5em !important; /* Less indentation */
+    margin: 0.5em 0 !important; /* Less margin */
+    text-align: left !important;
+}
+
+.prose li {
+    color: #e2e8f0 !important; /* Much brighter for list items */
+    margin-bottom: 0.2em !important; /* Less spacing between items */
+    line-height: 1.4 !important; /* Tighter line height */
+    text-align: left !important;
+    display: list-item !important;
+}
+
+/* Make bullet points much more visible and prevent line breaks */
+.prose ul li {
+    list-style-type: disc !important;
+    display: list-item !important;
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+}
+
+.prose ol li {
+    list-style-type: decimal !important;
+    display: list-item !important;
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+}
+
+.prose ul li::marker {
+    color: #f1f5f9 !important; /* Very bright bullets */
+    content: "•" !important;
+}
+
+.prose ol li::marker {
+    color: #f1f5f9 !important; /* Very bright numbers */
+    font-weight: 600 !important;
+}
+
+.prose a {
+    color: #60a5fa !important; /* Bright blue links */
+    text-decoration: underline !important;
+    font-weight: 500 !important;
+}
+
+.prose a:hover {
+    color: #93c5fd !important; /* Even brighter on hover */
+}
+
+.prose table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    margin: 1em 0 !important;
+    border: 1px solid #475569 !important;
+    border-radius: 6px !important;
+    overflow: hidden !important;
+}
+
+.prose th, .prose td {
+    border: 1px solid #475569 !important;
+    padding: 0.6em !important; /* Less padding */
+    text-align: left !important;
+    color: #e2e8f0 !important; /* Bright table text */
+}
+
+.prose th {
+    background-color: #1e293b !important;
+    font-weight: 700 !important;
+    color: #f1f5f9 !important; /* Very bright headers */
+}
+
+.prose tr:nth-child(even) td {
+    background-color: #1e293b !important;
+}
+
+/* Light mode overrides (keep existing good contrast) */
+body.light-mode .prose h1, 
+body.light-mode .prose h2, 
+body.light-mode .prose h3, 
+body.light-mode .prose h4, 
+body.light-mode .prose h5, 
+body.light-mode .prose h6 {
+    color: #1e293b !important;
+}
+
+body.light-mode .prose p {
+    color: #1e293b !important;
+    text-align: left !important;
+    text-justify: none !important;
+}
+
+body.light-mode .prose strong {
+    color: #0f172a !important;
+}
+
+body.light-mode .prose em {
+    color: #475569 !important;
+}
+
+body.light-mode .prose ul, 
+body.light-mode .prose ol {
+    color: #1e293b !important;
+}
+
+body.light-mode .prose li {
+    color: #1e293b !important;
+}
+
+body.light-mode .prose ul li::marker {
+    color: #0f172a !important;
+}
+
+body.light-mode .prose ol li::marker {
+    color: #0f172a !important;
+}
+
+body.light-mode .prose code {
+    background-color: #f1f5f9 !important;
+    color: #1e293b !important;
+    border: 1px solid #cbd5e1 !important;
+}
+
+body.light-mode .prose pre {
+    background-color: #f8fafc !important;
+    color: #1e293b !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+body.light-mode .prose pre code {
+    color: #1e293b !important;
+}
+
+body.light-mode .prose blockquote {
+    background-color: #f8fafc !important;
+    color: #475569 !important;
+    border-left: 4px solid #2563eb !important;
+}
+
+body.light-mode .prose th {
+    background-color: #f1f5f9 !important;
+    color: #1e293b !important;
+}
+
+body.light-mode .prose th, 
+body.light-mode .prose td {
+    color: #1e293b !important;
+}
+
+body.light-mode .prose tr:nth-child(even) td {
+    background-color: #f8fafc !important;
+}
+
+body.light-mode .prose a {
+    color: #2563eb !important;
+}
+
+body.light-mode .prose a:hover {
+    color: #1d4ed8 !important;
+}
+
+/* Enhanced markdown content styling with better contrast for both themes */
 .prose {
     max-width: none !important;
 }
@@ -358,68 +595,79 @@ body.light-mode ::-webkit-scrollbar-thumb:hover {
     color: var(--theme-text) !important;
     margin-top: 1.5em !important;
     margin-bottom: 0.5em !important;
+    font-weight: 700 !important;
 }
 
 .prose p {
     color: var(--theme-text) !important;
     margin-bottom: 1em !important;
+    line-height: 1.6 !important;
 }
 
 .prose strong {
     color: var(--theme-text) !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
 }
 
 .prose em {
-    color: var(--theme-text) !important;
+    color: var(--theme-text-secondary) !important;
+    font-style: italic !important;
 }
 
 .prose code {
     color: var(--theme-text) !important;
     background-color: var(--theme-bg-tertiary) !important;
-    padding: 2px 4px !important;
-    border-radius: 3px !important;
-    font-size: 0.85em !important;
+    padding: 3px 6px !important;
+    border-radius: 4px !important;
+    font-size: 0.9em !important;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+    border: 1px solid var(--theme-border) !important;
 }
 
 .prose pre {
     background-color: var(--theme-bg-tertiary) !important;
     color: var(--theme-text) !important;
-    padding: 1em !important;
-    border-radius: 6px !important;
+    padding: 1.2em !important;
+    border-radius: 8px !important;
     overflow-x: auto !important;
     border: 1px solid var(--theme-border) !important;
+    margin: 1em 0 !important;
 }
 
 .prose pre code {
     background-color: transparent !important;
     padding: 0 !important;
     border-radius: 0 !important;
+    border: none !important;
+    font-size: 0.85em !important;
 }
 
 .prose blockquote {
     border-left: 4px solid var(--theme-primary) !important;
-    padding-left: 1em !important;
-    margin: 1em 0 !important;
+    padding: 0.8em 1.2em !important;
+    margin: 1.2em 0 !important;
     color: var(--theme-text-secondary) !important;
     background-color: var(--theme-bg-secondary) !important;
-    padding: 0.5em 1em !important;
-    border-radius: 4px !important;
+    border-radius: 6px !important;
+    font-style: italic !important;
 }
 
 .prose ul, .prose ol {
     color: var(--theme-text) !important;
-    padding-left: 1.5em !important;
+    padding-left: 1.8em !important;
+    margin: 0.8em 0 !important;
 }
 
 .prose li {
     color: var(--theme-text) !important;
-    margin-bottom: 0.25em !important;
+    margin-bottom: 0.4em !important;
+    line-height: 1.5 !important;
 }
 
 .prose a {
     color: var(--theme-primary) !important;
     text-decoration: underline !important;
+    font-weight: 500 !important;
 }
 
 .prose a:hover {
@@ -429,23 +677,98 @@ body.light-mode ::-webkit-scrollbar-thumb:hover {
 .prose table {
     border-collapse: collapse !important;
     width: 100% !important;
-    margin: 1em 0 !important;
+    margin: 1.2em 0 !important;
+    border: 1px solid var(--theme-border) !important;
+    border-radius: 6px !important;
+    overflow: hidden !important;
 }
 
 .prose th, .prose td {
     border: 1px solid var(--theme-border) !important;
-    padding: 0.5em !important;
+    padding: 0.8em !important;
     text-align: left !important;
     color: var(--theme-text) !important;
 }
 
 .prose th {
     background-color: var(--theme-bg-secondary) !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
+    color: var(--theme-text) !important;
 }
 
 .prose tr:nth-child(even) td {
     background-color: var(--theme-bg-secondary) !important;
+}
+
+/* Enhanced contrast for light mode markdown */
+body.light-mode .prose code {
+    background-color: #f1f5f9 !important;
+    color: #1e293b !important;
+    border: 1px solid #cbd5e1 !important;
+}
+
+body.light-mode .prose pre {
+    background-color: #f8fafc !important;
+    color: #1e293b !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+body.light-mode .prose blockquote {
+    background-color: #f8fafc !important;
+    color: #475569 !important;
+    border-left: 4px solid #2563eb !important;
+}
+
+body.light-mode .prose th {
+    background-color: #f1f5f9 !important;
+    color: #1e293b !important;
+}
+
+body.light-mode .prose tr:nth-child(even) td {
+    background-color: #f8fafc !important;
+}
+
+/* Additional theme classes for MarkdownRenderer */
+.theme-code-inline {
+    color: var(--theme-text) !important;
+    background-color: var(--theme-bg-tertiary) !important;
+    border: 1px solid var(--theme-border) !important;
+}
+
+.theme-text-link {
+    color: var(--theme-primary) !important;
+}
+
+.theme-text-link:hover {
+    color: var(--theme-primary-hover) !important;
+}
+
+.theme-border-accent {
+    border-color: var(--theme-primary) !important;
+}
+
+/* Light mode specific overrides for markdown components */
+body.light-mode .theme-code-inline {
+    background-color: #f1f5f9 !important;
+    color: #1e293b !important;
+    border: 1px solid #cbd5e1 !important;
+}
+
+body.light-mode .theme-text-link {
+    color: var(--theme-primary-light) !important;
+}
+
+body.light-mode .theme-border-accent {
+    border-color: var(--theme-primary-light) !important;
+}
+
+/* Enhanced table styling for both themes */
+.prose table tr:nth-child(even) {
+    background-color: var(--theme-bg-secondary) !important;
+}
+
+body.light-mode .prose table tr:nth-child(even) {
+    background-color: #f8fafc !important;
 }
 
 /* Message selection styling - EXTREMELY high contrast */

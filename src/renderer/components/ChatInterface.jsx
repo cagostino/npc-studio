@@ -71,6 +71,10 @@ const ChatInterface = () => {
     const [selectedConvos, setSelectedConvos] = useState(new Set());
     const [lastClickedIndex, setLastClickedIndex] = useState(null);
     const [contextMenuPos, setContextMenuPos] = useState(null);
+    // --- NEW: File selection and context menu states ---
+    const [selectedFiles, setSelectedFiles] = useState(new Set());
+    const [lastClickedFileIndex, setLastClickedFileIndex] = useState(null);
+    const [fileContextMenuPos, setFileContextMenuPos] = useState(null);
     const [currentPath, setCurrentPath] = useState('');
     const [folderStructure, setFolderStructure] = useState({});
     const [activeConversationId, setActiveConversationId] = useState(null);
@@ -125,6 +129,10 @@ const ChatInterface = () => {
         defaultPrompt: '',
         onConfirm: null
     });
+
+    // --- NEW: Collapsible section states ---
+    const [filesCollapsed, setFilesCollapsed] = useState(true); // Set to true by default
+    const [conversationsCollapsed, setConversationsCollapsed] = useState(true); // Set to true by default
 
     // --- NEW/ADJUSTED SEARCH STATE ---
     const [searchTerm, setSearchTerm] = useState('');
@@ -364,7 +372,7 @@ const handleApplyPromptToMessages = async (operationType, customPrompt = '') => 
         const result = await window.api.executeCommandStream({
             commandstr: fullPrompt,
             currentPath,
-            conversationId: newConversation.id, // Use the new conversation
+            conversationId: newConversation.id,
             model: currentModel,
             npc: selectedNpc ? selectedNpc.name : currentNPC,
             npcSource: selectedNpc ? selectedNpc.source : 'global',
@@ -451,7 +459,170 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
     }
 };
 
-    // Add this function to load NPCs
+// --- NEW: File operation handlers ---
+const handleApplyPromptToFiles = async (operationType, customPrompt = '') => {
+    const selectedFilePaths = Array.from(selectedFiles);
+    if (selectedFilePaths.length === 0) return;
+    
+    try {
+        // Read content from all selected files
+        const filesContentPromises = selectedFilePaths.map(async (filePath, index) => {
+            const response = await window.api.readFileContent(filePath);
+            if (response.error) {
+                console.warn(`Could not read file ${filePath}:`, response.error);
+                return `File ${index + 1} (${filePath}): [Error reading content: ${response.error}]`;
+            }
+            const fileName = filePath.split('/').pop();
+            return `File ${index + 1} (${fileName}):\n---\n${response.content}\n---`;
+        });
+        const filesContent = await Promise.all(filesContentPromises);
+        
+        let prompt = '';
+        switch (operationType) {
+            case 'summarize':
+                prompt = `Summarize the content of these ${selectedFilePaths.length} file(s):\n\n`;
+                break;
+            case 'analyze':
+                prompt = `Analyze the content of these ${selectedFilePaths.length} file(s) for key insights:\n\n`;
+                break;
+            case 'refactor':
+                prompt = `Refactor and improve the code in these ${selectedFilePaths.length} file(s):\n\n`;
+                break;
+            case 'document':
+                prompt = `Generate documentation for these ${selectedFilePaths.length} file(s):\n\n`;
+                break;
+            case 'custom':
+                prompt = customPrompt + `\n\nApply this to these ${selectedFilePaths.length} file(s):\n\n`;
+                break;
+        }
+
+        const fullPrompt = prompt + filesContent.join('\n\n');
+
+        // Create a new conversation for this operation
+        const newConversation = await createNewConversation();
+        if (!newConversation) {
+            throw new Error('Failed to create new conversation');
+        }
+
+        setActiveConversationId(newConversation.id);
+        setCurrentConversation(newConversation);
+        setMessages([]);
+        setAllMessages([]);
+        setDisplayedMessageCount(10);
+
+        const newStreamId = generateId();
+        streamIdRef.current = newStreamId;
+        setIsStreaming(true);
+
+        const selectedNpc = availableNPCs.find(npc => npc.value === currentNPC);
+
+        const userMessage = {
+            id: generateId(),
+            role: 'user',
+            content: fullPrompt,
+            timestamp: new Date().toISOString(),
+            type: 'message'
+        };
+
+        const assistantPlaceholderMessage = {
+            id: newStreamId,
+            role: 'assistant',
+            content: '',
+            reasoningContent: '',
+            toolCalls: [],
+            timestamp: new Date().toISOString(),
+            streamId: newStreamId,
+            model: currentModel,
+            npc: currentNPC
+        };
+
+        setMessages([userMessage, assistantPlaceholderMessage]);
+        setAllMessages([userMessage, assistantPlaceholderMessage]);
+
+        await window.api.executeCommandStream({
+            commandstr: fullPrompt,
+            currentPath,
+            conversationId: newConversation.id,
+            model: currentModel,
+            npc: selectedNpc ? selectedNpc.name : currentNPC,
+            npcSource: selectedNpc ? selectedNpc.source : 'global',
+            attachments: [],
+            streamId: newStreamId
+        });
+        
+    } catch (err) {
+        console.error('Error processing files:', err);
+        setError(err.message);
+        setIsStreaming(false);
+        streamIdRef.current = null;
+    } finally {
+        setSelectedFiles(new Set());
+        setFileContextMenuPos(null);
+    }
+};
+
+const handleApplyPromptToFilesInInput = async (operationType, customPrompt = '') => {
+    const selectedFilePaths = Array.from(selectedFiles);
+    if (selectedFilePaths.length === 0) return;
+    
+    try {
+        const filesContentPromises = selectedFilePaths.map(async (filePath, index) => {
+            const response = await window.api.readFileContent(filePath);
+            if (response.error) {
+                console.warn(`Could not read file ${filePath}:`, response.error);
+                return `File ${index + 1} (${filePath}): [Error reading content: ${response.error}]`;
+            }
+            const fileName = filePath.split('/').pop();
+            return `File ${index + 1} (${fileName}):\n---\n${response.content}\n---`;
+        });
+        const filesContent = await Promise.all(filesContentPromises);
+        
+        let prompt = '';
+        switch (operationType) {
+            case 'summarize':
+                prompt = `Summarize the content of these ${selectedFilePaths.length} file(s):\n\n`;
+                break;
+            case 'analyze':
+                prompt = `Analyze the content of these ${selectedFilePaths.length} file(s) for key insights:\n\n`;
+                break;
+            case 'refactor':
+                prompt = `Refactor and improve the code in these ${selectedFilePaths.length} file(s):\n\n`;
+                break;
+            case 'document':
+                prompt = `Generate documentation for these ${selectedFilePaths.length} file(s):\n\n`;
+                break;
+            case 'custom':
+                prompt = customPrompt + `\n\nApply this to these ${selectedFilePaths.length} file(s):\n\n`;
+                break;
+        }
+
+        const fullPrompt = prompt + filesContent.join('\n\n');
+
+        if (!activeConversationId) {
+            await createNewConversation();
+        }
+
+        setInput(fullPrompt);
+        
+    } catch (err) {
+        console.error('Error preparing file prompt for input field:', err);
+        setError(err.message);
+    } finally {
+        setSelectedFiles(new Set());
+        setFileContextMenuPos(null);
+    }
+};
+
+const handleFileContextMenu = (e, filePath) => {
+    e.preventDefault();
+    if (!selectedFiles.has(filePath) && selectedFiles.size > 0) {
+        setSelectedFiles(prev => new Set([...prev, filePath]));
+    } else if (selectedFiles.size === 0) {
+        setSelectedFiles(new Set([filePath]));
+    }
+    setFileContextMenuPos({ x: e.clientX, y: e.clientY, filePath });
+};
+
     const loadAvailableNPCs = async () => {
         if (!currentPath) return;
         
@@ -541,23 +712,108 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
         }
     };
 
+    // Add isSaving state
+    const [isSaving, setIsSaving] = useState(false);
+
     const handleFileSave = async () => {
+        if (!currentFile || !fileChanged || isSaving) return;
         try {
-            if (!currentFile || !fileChanged) return;
+            setIsSaving(true);
             const response = await window.api.writeFileContent(currentFile, fileContent);
             if (response.error) throw new Error(response.error);
             setFileChanged(false);
+            
+            // Only refresh the directory structure WITHOUT affecting conversations
+            const structureResult = await window.api.readDirectoryStructure(currentPath);
+            if (structureResult && !structureResult.error) {
+                setFolderStructure(structureResult);
+            }
+            
             console.log('File saved successfully');
-        } catch (err)
- {
+        } catch (err) {
             console.error('Error saving file:', err);
             setError(err.message);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const handleFileContentChange = (newContent) => {
         setFileContent(newContent);
         setFileChanged(true);
+    };
+
+    // --- NEW: File renaming state and handlers ---
+    const [isRenamingFile, setIsRenamingFile] = useState(false);
+    const [newFileName, setNewFileName] = useState('');
+
+    const handleRenameFile = async () => {
+        try {
+            if (!currentFile || !newFileName.trim()) return;
+            
+            const lastSlashIndex = currentFile.lastIndexOf('/');
+            const dirPath = currentFile.substring(0, lastSlashIndex + 1);
+            const newPath = dirPath + newFileName;
+            
+            const response = await window.api.renameFile(currentFile, newPath);
+            if (response?.error) throw new Error(response.error);
+            
+            // Update the current file path to the new path
+            setCurrentFile(newPath);
+            setIsRenamingFile(false);
+            
+            // Only refresh the directory structure WITHOUT affecting conversations
+            const structureResult = await window.api.readDirectoryStructure(currentPath);
+            if (structureResult && !structureResult.error) {
+                setFolderStructure(structureResult);
+            }
+            
+            console.log('File renamed successfully from', currentFile, 'to', newPath);
+        } catch (err) {
+            console.error('Error renaming file:', err);
+            setError(err.message);
+        }
+    };
+
+    const deleteSelectedConversations = async () => {
+        const selectedConversationIds = Array.from(selectedConvos);
+        const selectedFilePaths = Array.from(selectedFiles);
+        
+        if (selectedConversationIds.length === 0 && selectedFilePaths.length === 0) return;
+        
+        try {
+            // Delete selected conversations
+            if (selectedConversationIds.length > 0) {
+                await Promise.all(selectedConversationIds.map(id => window.api.deleteConversation(id)));
+                await loadConversations(currentPath);
+            }
+            
+            // Delete selected files
+            if (selectedFilePaths.length > 0) {
+                await Promise.all(selectedFilePaths.map(filePath => window.api.deleteFile(filePath)));
+                
+                // If current file is being deleted, close the editor
+                if (selectedFilePaths.includes(currentFile)) {
+                    setCurrentFile(null);
+                    setIsEditing(false);
+                    setFileContent('');
+                    setFileChanged(false);
+                }
+                
+                // Refresh folder structure
+                const structureResult = await window.api.readDirectoryStructure(currentPath);
+                if (structureResult && !structureResult.error) {
+                    setFolderStructure(structureResult);
+                }
+            }
+        } catch (err) {
+            console.error('Error deleting items:', err);
+            setError(err.message);
+        }
+        
+        // Clear selections
+        setSelectedConvos(new Set());
+        setSelectedFiles(new Set());
     };
 
     useEffect(() => {
@@ -932,6 +1188,44 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
         }
     };
 
+    const createNewTextFile = async () => {
+        try {
+            // Generate a unique filename with timestamp
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+            const filename = `untitled-${timestamp}.txt`;
+            
+            // Fix the double slash issue by ensuring proper path joining
+            const filepath = currentPath.endsWith('/') 
+                ? `${currentPath}${filename}` 
+                : `${currentPath}/${filename}`;
+            
+            // Create an empty text file
+            const response = await window.api.writeFileContent(filepath, '');
+            if (response.error) throw new Error(response.error);
+            
+            
+            // Refresh the folder structure to include the new file
+            const structureResult = await window.api.readDirectoryStructure(currentPath);
+            if (structureResult && !structureResult.error) {
+                setFolderStructure(structureResult);
+                
+                // Wait for React to process the folder structure update, THEN set current file
+                setTimeout(() => {
+                    setCurrentFile(filepath);
+                    setFileContent('');
+                    setIsEditing(true);
+                    setFileChanged(false);
+                    setActiveConversationId(null);
+                }, 0);
+            }
+            
+            console.log('Created new text file:', filepath);
+        } catch (err) {
+            console.error('Error creating new text file:', err);
+            setError(err.message);
+        }
+    };
+
     const handleDrop = (e) => {
         e.preventDefault();
         setIsHovering(false);
@@ -1293,20 +1587,17 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
                 if (msgIndex !== -1) {
                     newMessages[msgIndex] = {
                         ...newMessages[msgIndex],
-                        content: (newMessages[msgIndex].content || '') + "\n\n[Stream Interrupted by User]",
+                        content: (newMessages[msgIndex].content || '') + `\n\n[Stream Interrupted by User]`,
                         isStreaming: false, // Mark message as not streaming
                         streamId: null      // Clear streamId from message
                     };
                     console.log(`[REACT] handleInterruptStream: Updated message ${streamIdToInterrupt} UI for interruption.`);
                 } else {
                     console.warn(`[REACT] handleInterruptStream: Placeholder message not found for interrupted stream ${streamIdToInterrupt}.`);
-                    // Optionally add a system message if needed
-                    // newMessages.push({ /* ... system message ... */ });
                 }
                 return newMessages;
             });
             // --- END IMMEDIATE UI UPDATE ---
-
 
             // --- Call Backend API ---
             try {
@@ -1321,29 +1612,10 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
                         : msg
                 ));
             }
-            // No 'finally' block needed here as state is updated optimistically above
         } else {
             console.warn(`[REACT] handleInterruptStream: Called when not streaming or streamIdRef is null. isStreaming=${isStreaming}, streamIdRef=${streamIdRef.current}`);
         }
     };
-
-    
-    
-    const deleteSelectedConversations = async () => {
-        const selectedIds = Array.from(selectedConvos);
-        if (selectedIds.length === 0) return;
-        try {
-            await Promise.all( selectedIds.map(id => window.api.deleteConversation(id)) );
-            await loadConversations(currentPath);
-        } catch (err) {
-            console.error('Error deleting conversations:', err);
-            setError(err.message);
-        }
-        setSelectedConvos(new Set());
-    };
-
-    const handleOpenNpcTeamMenu = () => { setNpcTeamMenuOpen(true); };
-    const handleCloseNpcTeamMenu = () => { setNpcTeamMenuOpen(false); };
 
     const handleSummarizeAndStart = async () => {
         const selectedIds = Array.from(selectedConvos);
@@ -1431,173 +1703,43 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
         }
     };
 
-    const handleSummarizeAndDraft = async () => {
-        const selectedIds = Array.from(selectedConvos);
-        if (selectedIds.length === 0) return;
-        setContextMenuPos(null);
-
-        try {
-            // 1. Fetch and format conversation content
-            const convosContentPromises = selectedIds.map(async (id, index) => {
-                const messages = await window.api.getConversationMessages(id);
-                if (!Array.isArray(messages)) {
-                    console.warn(`Could not fetch messages for conversation ${id}`);
-                    return `Conversation ${index + 1} (ID: ${id}): [Error fetching content]`;
-                }
-                const messagesText = messages.map(msg => `${msg.role}: ${msg.content}`).join('\n');
-                return `Conversation ${index + 1} (ID: ${id}):\n---\n${messagesText}\n---`;
-            });
-            const convosContent = await Promise.all(convosContentPromises);
-
-            // 2. Create the full prompt
-            const fullPrompt = `Please provide a concise summary of the following ${selectedIds.length} conversation(s):\n\n` + convosContent.join('\n\n');
-
-            // 3. Ensure an active conversation exists, creating one if necessary
-            if (!activeConversationId) {
-                await createNewConversation();
-            }
-
-            // 4. Place the generated prompt into the input field for the user to edit/send
-            setInput(fullPrompt);
-            
-        } catch (err) {
-            console.error('Error preparing summary draft:', err);
-            setError(err.message);
-        } finally {
-            setSelectedConvos(new Set()); // Clear selection
-        }
-    };
-
-    const handleSummarizeAndPrompt = async () => {
-        const selectedIds = Array.from(selectedConvos);
-        if (selectedIds.length === 0) return;
-        setContextMenuPos(null);
-
-        try {
-            // 1. Fetch and format content to create the initial prompt
-            const convosContentPromises = selectedIds.map(async (id, index) => {
-                const messages = await window.api.getConversationMessages(id);
-                if (!Array.isArray(messages)) {
-                    console.warn(`Could not fetch messages for conversation ${id}`);
-                    return `Conversation ${index + 1} (ID: ${id}): [Error fetching content]`;
-                }
-                const messagesText = messages.map(msg => `${msg.role}: ${msg.content}`).join('\n');
-                return `Conversation ${index + 1} (ID: ${id}):\n---\n${messagesText}\n---`;
-            });
-            const convosContent = await Promise.all(convosContentPromises);
-            const initialPrompt = `Please provide a concise summary of the following ${selectedIds.length} conversation(s):\n\n` + convosContent.join('\n\n');
-
-            // 2. Open the modal, allowing the user to edit the prompt before execution
-            setPromptModal({
-                isOpen: true,
-                title: 'Review and Edit Prompt',
-                message: 'Edit the prompt below, then confirm to start a new conversation with it.',
-                defaultValue: initialPrompt,
-                onConfirm: async (finalPrompt) => {
-                    if (!finalPrompt || !finalPrompt.trim()) return;
-
-                    try {
-                        // This logic mirrors handleSummarizeAndStart, using the user-edited prompt
-                        const newConversation = await createNewConversation();
-                        if (!newConversation) throw new Error('Failed to create new conversation.');
-                        
-                        setActiveConversationId(newConversation.id);
-                        setCurrentConversation(newConversation);
-                        setMessages([]);
-                        setAllMessages([]);
-
-                        const newStreamId = generateId();
-                        streamIdRef.current = newStreamId;
-                        setIsStreaming(true);
-
-                        const selectedNpc = availableNPCs.find(npc => npc.value === currentNPC);
-
-                        const userMessage = { id: generateId(), role: 'user', content: finalPrompt, timestamp: new Date().toISOString(), type: 'message' };
-                        const assistantPlaceholderMessage = { id: newStreamId, role: 'assistant', content: '', reasoningContent: '', toolCalls: [], timestamp: new Date().toISOString(), streamId: newStreamId, model: currentModel, npc: currentNPC };
-                        
-                        setMessages([userMessage, assistantPlaceholderMessage]);
-                        setAllMessages([userMessage, assistantPlaceholderMessage]);
-                        
-                        await window.api.executeCommandStream({
-                            commandstr: finalPrompt,
-                            currentPath,
-                            conversationId: newConversation.id,
-                            model: currentModel,
-                            npc: selectedNpc ? selectedNpc.name : currentNPC,
-                            npcSource: selectedNpc ? selectedNpc.source : 'global',
-                            attachments: [],
-                            streamId: newStreamId
-                        });
-                    } catch (innerErr) {
-                        console.error('Error executing prompted summary:', innerErr);
-                        setError(innerErr.message);
-                        setIsStreaming(false);
-                        streamIdRef.current = null;
-                    }
-                }
-            });
-        } catch (err) {
-            console.error('Error preparing summary prompt:', err);
-            setError(err.message);
-        } finally {
-            setSelectedConvos(new Set()); // Clear selection after opening modal
-        }
-    };
-
-    const handleSearchResultSelect = async (conversationId, searchTerm) => {
-        // First, select the conversation. This will load its messages.
-        await handleConversationSelect(conversationId);
-        
-        // After messages are loaded (handleConversationSelect is async),
-        // we need to wait for the state to update. We use a short timeout
-        // to allow React to re-render with the new messages.
-        setTimeout(() => {
-            // Access the latest messages from the state `allMessages`
-            setAllMessages(currentMessages => {
-                const results = [];
-                currentMessages.forEach((msg, index) => {
-                    if (msg.content && msg.content.toLowerCase().includes(searchTerm.toLowerCase())) {
-                        results.push({
-                            messageId: msg.id || msg.timestamp,
-                            index: index,
-                            content: msg.content
-                        });
-                    }
-                });
-
-                setMessageSearchResults(results);
-                if (results.length > 0) {
-                    const firstResultId = results[0].messageId;
-                    setActiveSearchResult(firstResultId);
-                    
-                    // Scroll to the first result
-                    setTimeout(() => {
-                        const messageElement = document.getElementById(`message-${firstResultId}`);
-                        if (messageElement) {
-                            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }
-                    }, 100);
-                }
-                return currentMessages; // Return original messages, no change needed here
-            });
-        }, 100); // Small delay to ensure messages are in state
-    };
-
-
     // --- Internal Render Functions ---
     const renderSidebar = () => (
         <div className="w-64 border-r theme-border flex flex-col flex-shrink-0 theme-sidebar">
             <div className="p-4 border-b theme-border flex items-center justify-between flex-shrink-0">
                 <span className="text-sm font-semibold theme-text-primary">NPC Studio</span>
                 <div className="flex gap-2">
-                    <button onClick={refreshConversations} className="p-2 theme-button theme-hover rounded-full transition-all" aria-label="Refresh Conversations">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.44-4.5M22 12.5a10 10 0 0 1-18.44 4.5"/>
-                        </svg>
-                    </button>
                     <button onClick={() => setSettingsOpen(true)} className="p-2 theme-button theme-hover rounded-full transition-all" aria-label="Settings"><Settings size={14} /></button>
-                    <button onClick={deleteSelectedConversations} className="p-2 theme-hover rounded-full transition-all" aria-label="Delete Selected Conversations"><Trash size={14} /></button>
-                    <button onClick={createNewConversation} className="p-2 theme-button-primary rounded-full transition-all" aria-label="New Conversation"><Plus size={18} /></button>
+                    <button onClick={deleteSelectedConversations} className="p-2 theme-hover rounded-full transition-all" aria-label="Delete Selected Items"><Trash size={14} /></button>
+                    
+                    {/* New dropdown for creating various file types - matching the screenshot design */}
+                    <div className="relative group">
+                        <div className="flex">
+                            <button onClick={createNewConversation} className="p-2 theme-button-primary rounded-full flex items-center gap-1 transition-all" aria-label="New Conversation">
+                                <Plus size={14} />
+                                <ChevronRight size={10} className="transform rotate-90 opacity-60" />
+                            </button>
+                        </div>
+                        
+                        {/* Dropdown menu - with hover persistence */}
+                        <div className="absolute left-0 top-full mt-1 theme-bg-secondary border theme-border rounded shadow-lg py-1 z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible hover:opacity-100 hover:visible transition-all duration-150">
+                            <button 
+                                onClick={createNewConversation} 
+                                className="flex items-center gap-2 px-3 py-1 w-full text-left theme-hover text-xs"
+                            >
+                                <MessageSquare size={12} />
+                                <span>New Conversation</span>
+                            </button>
+                            <button 
+                                onClick={createNewTextFile} 
+                                className="flex items-center gap-2 px-3 py-1 w-full text-left theme-hover text-xs"
+                            >
+                                <FileText size={12} />
+                                <span>New Text File</span>
+                            </button>
+                        </div>
+                    </div>
+                    
                     <button className="theme-toggle-btn p-1" onClick={toggleTheme}>{isDarkMode ? '🌙' : '☀️'}</button>
                 </div>
             </div>
@@ -1611,6 +1753,7 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
                     </div>
                 )}
             </div>
+            
             {/* --- UPDATED SEARCH AREA --- */}
             <div className="p-2 border-b theme-border flex flex-col gap-2 flex-shrink-0">
                 <div className="flex items-center gap-2">
@@ -1672,6 +1815,7 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
                 )}
                 {/* The context menu can live outside the conditional rendering if needed */}
                 {contextMenuPos && renderContextMenu()}
+                {fileContextMenuPos && renderFileContextMenu()}
             </div>
             
             <div className="p-4 border-t theme-border flex-shrink-0">
@@ -1688,10 +1832,77 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
     const renderFolderList = (structure) => {
         if (!structure || typeof structure !== 'object' || structure.error) { return <div className="p-2 text-xs text-red-500">Error: {structure?.error || 'Failed to load'}</div>; }
         if (Object.keys(structure).length === 0) { return <div className="p-2 text-xs text-gray-500">Empty directory</div>; }
+        
+        // Section header with collapse toggle
+        const header = (
+            <div className="flex items-center justify-between px-4 py-2 mt-4">
+                <div className="text-xs text-gray-500 font-medium">Files and Folders</div>
+                <button 
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setFilesCollapsed(!filesCollapsed);
+                    }}
+                    className="p-1 theme-hover rounded-full transition-all"
+                    title={filesCollapsed ? "Expand files" : "Collapse files"}
+                >
+                    <ChevronRight
+                        size={16}
+                        className={`transform transition-transform ${filesCollapsed ? "" : "rotate-90"}`}
+                    />
+                </button>
+            </div>
+        );
+        
+        // If collapsed, we still show the active file (if any)
+        if (filesCollapsed) {
+            // Find the currently open file in the structure
+            const findCurrentFile = (struct) => {
+                for (const [name, content] of Object.entries(struct)) {
+                    if (content?.path === currentFile && content?.type === 'file') {
+                                                                                                                                                                                                                                                                                            
+
+                       
+                        return { name, content };
+                    }
+                }
+                return null;
+            };
+            
+            const activeFile = currentFile ? findCurrentFile(structure) : null;
+            
+            return (
+                <div className="mt-4">
+                    {header}
+                    {activeFile && (
+                        <div className="px-1 mt-1">
+                            <button
+                                onClick={() => handleFileClick(activeFile.content.path)}
+                                className="flex items-center gap-2 px-2 py-1 w-full hover:bg-gray-800 text-left rounded" title={`Edit ${activeFile.name}`}
+                            >
+                                {getFileIcon(activeFile.name)}
+                                <span className="text-gray-300 truncate">{activeFile.name}</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+ 
+        
         const entries = [];
-        const sortedEntries = Object.entries(structure).sort(([nameA, contentA], [nameB, contentB]) => { const typeA = contentA?.type; const typeB = contentB?.type; if (typeA === 'directory' && typeB !== 'directory') return -1; if (typeA !== 'directory' && typeB === 'directory') return 1; return nameA.localeCompare(nameB); });
-        sortedEntries.forEach(([name, content]) => {
-            const fullPath = content?.path; const isFolder = content?.type === 'directory'; const isFile = content?.type === 'file'; if (!fullPath) return;
+        const sortedEntries = Object.entries(structure).sort(([nameA, contentA], [nameB, contentB]) => { 
+            const typeA = contentA?.type; 
+            const typeB = contentB?.type; 
+            if (typeA === 'directory' && typeB !== 'directory') return -1; 
+            if (typeA !== 'directory' && typeB === 'directory') return 1; 
+            return nameA.localeCompare(nameB); 
+        });
+        
+        sortedEntries.forEach(([name, content], index) => {
+            const fullPath = content?.path; 
+            const isFolder = content?.type === 'directory'; 
+            const isFile = content?.type === 'file'; 
+            if (!fullPath) return;
             if (isFolder) { entries.push(
                 <div key={`folder-${fullPath}`}>
                     <button onDoubleClick={() => setCurrentPath(fullPath)} className="flex items-center gap-2 px-2 py-1 w-full hover:bg-gray-800 text-left rounded" title={`Double-click to open ${name}`}>
@@ -1700,21 +1911,73 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
                     </button>
                 </div>
             );
-            } else if (isFile) { const fileIcon = getFileIcon(name); entries.push(
-                <div key={`file-${fullPath}`}>
-                    <button onClick={() => handleFileClick(fullPath)} className="flex items-center gap-2 px-2 py-1 w-full hover:bg-gray-800 text-left rounded" title={`Edit ${name}`}>
-                        {fileIcon}
-                        <span className="text-gray-300 truncate">{name}</span>
-                    </button>
-                </div>
-            ); }
+            } else if (isFile) { 
+                const fileIcon = getFileIcon(name); 
+                const isActiveFile = currentFile === fullPath; // Highlight if this file is open
+                const isSelected = selectedFiles.has(fullPath);
+                
+                // Get the actual file index (only counting files, not folders)
+                const fileEntries = sortedEntries.filter(([, content]) => content?.type === 'file');
+                const currentFileIndex = fileEntries.findIndex(([, content]) => content?.path === fullPath);
+               
+                entries.push(
+                    <div key={`file-${fullPath}`}>
+                        <button 
+                            onClick={(e) => {
+                                if (e.ctrlKey || e.metaKey) {
+                                    // Ctrl+Click for multi-select
+                                    const newSelected = new Set(selectedFiles);
+                                    if (newSelected.has(fullPath)) {
+                                        newSelected.delete(fullPath);
+                                    } else {
+                                        newSelected.add(fullPath);
+                                    }
+                                    setSelectedFiles(newSelected);
+                                    setLastClickedFileIndex(currentFileIndex);
+                                } else if (e.shiftKey && lastClickedFileIndex !== null) {
+                                    // Shift+Click for range selection
+                                    const newSelected = new Set();
+                                    
+                                    const start = Math.min(lastClickedFileIndex, currentFileIndex);
+                                    const end = Math.max(lastClickedFileIndex, currentFileIndex);
+                                    
+                                    for (let i = start; i <= end; i++) {
+                                        if (fileEntries[i]) {
+                                            newSelected.add(fileEntries[i][1].path);
+                                        }
+                                    }
+                                    setSelectedFiles(newSelected);
+                                } else {
+                                    // Regular click - clear other selections and open file
+                                    setSelectedFiles(new Set([fullPath]));
+                                    handleFileClick(fullPath);
+                                    setLastClickedFileIndex(currentFileIndex);
+                                }
+                            }}
+                            onContextMenu={(e) => handleFileContextMenu(e, fullPath)}
+                            className={`flex items-center gap-2 px-2 py-1 w-full text-left rounded transition-all duration-200
+                                ${isActiveFile ? 'conversation-selected border-l-2 border-blue-500' : 
+                                  isSelected ? 'conversation-selected' : 'hover:bg-gray-800'}`} 
+                            title={`Edit ${name}`}
+                        >
+                            {fileIcon}
+                            <span className="text-gray-300 truncate">{name}</span>
+                        </button>
+                    </div>
+                ); }
         });
-        return entries;
+        
+        return (
+            <div>
+                {header}
+                <div className="px-1">{entries}</div>
+            </div>
+        );
     };
-
-    // --- NEW: Renderer for deep search results ---
     const renderSearchResults = () => {
         if (searchLoading) {
+           
+
             return <div className="p-4 text-center theme-text-muted">Searching...</div>;
         }
 
@@ -1729,7 +1992,7 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
                     <button
                         key={result.conversationId}
                         onClick={() => handleSearchResultSelect(result.conversationId, searchTerm)}
-                        className={`flex flex-col gap-1 px-4 py-2 w-full theme-hover text-left rounded-lg transition-all duration-200 ${
+                        className={`flex flex-col gap-1 px-4 py-2 w-full theme-hover text-left rounded-lg transition-all ${
                             activeConversationId === result.conversationId ? 'border-l-2 border-blue-500' : ''
                         }`}
                     >
@@ -1749,7 +2012,7 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
                                 title={result.matches[0].snippet} // Show full snippet on hover
                             >
                                 ...{result.matches[0].snippet}...
-                            </div>
+                                                       </div>
                         )}
                     </button>
                 ))}
@@ -1758,13 +2021,77 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
     };
 
 
-    const renderConversationList = (conversations) => (
-        conversations?.length > 0 && (
+    const renderConversationList = (conversations) => {
+        if (!conversations?.length) return null;
+        
+        // Section header with collapse toggle and refresh button
+        const header = (
+            <div className="flex items-center justify-between px-4 py-2 mt-4">
+                <div className="text-xs text-gray-500 font-medium">Conversations ({conversations.length})</div>
+                <div className="flex items-center gap-1">
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            refreshConversations();
+                        }}
+                        className="p-1 theme-hover rounded-full transition-all"
+                        title="Refresh conversations"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.44-4.5M22 12.5a10 10 0 0 1-18.44 4.5"/>
+                        </svg>
+                    </button>
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setConversationsCollapsed(!conversationsCollapsed);
+                        }}
+                        className="p-1 theme-hover rounded-full transition-all"
+                        title={conversationsCollapsed ? "Expand conversations" : "Collapse conversations"}
+                    >
+                        <ChevronRight
+                            size={16}
+                            className={`transform transition-transform ${conversationsCollapsed ? "" : "rotate-90"}`}
+                        />
+                    </button>
+                </div>
+            </div>
+        );
+        
+        // If collapsed, we still show the active conversation (if any)
+        if (conversationsCollapsed) {
+            const activeConversation = activeConversationId ? conversations.find(conv => conv.id === activeConversationId) : null;
+            
+            return (
+                <div className="mt-4">
+                    {header}
+                    {activeConversation && !currentFile && (
+                        <div className="px-1 mt-1">
+                            <button
+                                key={activeConversation.id}
+                                onClick={() => handleConversationSelect(activeConversation.id)}
+                                className="flex items-center gap-2 px-4 py-2 w-full theme-hover text-left rounded-lg transition-all duration-200 conversation-selected border-l-2 border-blue-500"
+                            >
+                                <File size={16} className="text-gray-400 flex-shrink-0" />
+                                <div className="flex flex-col overflow-hidden">
+                                    <span className="text-sm truncate">{activeConversation.title || activeConversation.id}</span>
+                                    <span className="text-xs text-gray-500">{new Date(activeConversation.timestamp).toLocaleString()}</span>
+                                </div>
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        
+        // Regular full list when not collapsed
+        return (
             <div className="mt-4">
-                <div className="px-4 py-2 text-xs text-gray-500">Conversations ({conversations.length})</div>
-                <div>
+                {header}
+                <div className="px-1">
                     {conversations.map((conv, index) => {
                         const isSelected = selectedConvos?.has(conv.id);
+                        const isActive = conv.id === activeConversationId && !currentFile; // Only highlight if no file is open
                         const isLastClicked = lastClickedIndex === index;
                         
                         return (
@@ -1805,8 +2132,8 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
                                     setContextMenuPos({ x: e.clientX, y: e.clientY }); 
                                 }}
                                 className={`flex items-center gap-2 px-4 py-2 w-full theme-hover text-left rounded-lg transition-all duration-200
-                                    ${isSelected ? 'conversation-selected' : 'theme-text-primary'}
-                                    ${activeConversationId === conv.id ? 'border-l-2 border-blue-500' : ''}`}
+                                    ${isSelected || isActive ? 'conversation-selected' : 'theme-text-primary'}
+                                    ${isActive ? 'border-l-2 border-blue-500' : ''}`}
                             >
                                 <File size={16} className="text-gray-400 flex-shrink-0" />
                                 <div className="flex flex-col overflow-hidden">
@@ -1818,33 +2145,33 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
                     })}
                 </div>
             </div>
-        )
-    );
+        );
+    };
 
     const renderContextMenu = () => (
         contextMenuPos && (
             <div
-                className="fixed bg-gray-900 border border-gray-700 rounded shadow-lg py-1 z-50"
+                className="fixed theme-bg-secondary theme-border border rounded shadow-lg py-1 z-50"
                 style={{ top: contextMenuPos.y, left: contextMenuPos.x }}
                 onMouseLeave={() => setContextMenuPos(null)}
             >
                 <button
                     onClick={() => handleSummarizeAndStart()}
-                    className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 w-full text-left"
+                    className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
                 >
                     <MessageSquare size={16} />
                     <span>Summarize & Start ({selectedConvos?.size || 0})</span>
                 </button>
                 <button
                     onClick={() => handleSummarizeAndDraft()}
-                    className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 w-full text-left"
+                    className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
                 >
                     <Edit size={16} />
                     <span>Summarize & Draft ({selectedConvos?.size || 0})</span>
                 </button>
                 <button
                     onClick={() => handleSummarizeAndPrompt()}
-                    className="flex items-center gap-2 px-4 py-2 hover:bg-gray-800 w-full text-left"
+                    className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
                 >
                     <MessageSquare size={16} />
                     <span>Summarize & Prompt ({selectedConvos?.size || 0})</span>
@@ -1853,12 +2180,125 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
         )
     );
 
-    const renderFileEditor = () => (
+    const renderFileContextMenu = () => (
+        fileContextMenuPos && (
+            <div
+                className="fixed theme-bg-secondary theme-border border rounded shadow-lg py-1 z-50"
+                style={{ top: fileContextMenuPos.y, left: fileContextMenuPos.x }}
+                onMouseLeave={() => setFileContextMenuPos(null)}
+            >
+                <button
+                    onClick={() => handleApplyPromptToFiles('summarize')}
+                    className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                >
+                    <MessageSquare size={16} />
+                    <span>Summarize Files ({selectedFiles.size})</span>
+                </button>
+                <button
+                    onClick={() => handleApplyPromptToFilesInInput('summarize')}
+                    className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                >
+                    <MessageSquare size={16} />
+                    <span>Summarize in Input Field ({selectedFiles.size})</span>
+                </button>
+                <div className="border-t theme-border my-1"></div>
+                <button
+                    onClick={() => handleApplyPromptToFiles('analyze')}
+                    className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                >
+                    <Edit size={16} />
+                    <span>Analyze Files ({selectedFiles.size})</span>
+                </button>
+                <button
+                    onClick={() => handleApplyPromptToFilesInInput('analyze')}
+                    className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                >
+                    <Edit size={16} />
+                    <span>Analyze in Input Field ({selectedFiles.size})</span>
+                </button>
+                <div className="border-t theme-border my-1"></div>
+                <button
+                    onClick={() => handleApplyPromptToFiles('refactor')}
+                    className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                >
+                    <Code2 size={16} />
+                    <span>Refactor Code ({selectedFiles.size})</span>
+                </button>
+                <button
+                    onClick={() => handleApplyPromptToFiles('document')}
+                    className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                >
+                    <FileText size={16} />
+                    <span>Document Code ({selectedFiles.size})</span>
+                </button>
+            </div>
+        )
+    );
+
+    const renderFileEditor = () => {
+        const fileName = currentFile ? currentFile.split('/').pop() : '';
+        return (
         <div className="flex-1 flex flex-col bg-gray-800">
             <div className="p-2 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
-                <div className="text-sm text-gray-300 truncate">{currentFile}</div>
+                {isRenamingFile ? (
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="text"
+                            value={newFileName}
+                            onChange={(e) => setNewFileName(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleRenameFile();
+                                }
+                                if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    setIsRenamingFile(false);
+                                }
+                            }}
+                            className="text-sm bg-gray-900 text-gray-300 px-2 py-1 rounded border border-gray-700"
+                            autoFocus
+                        />
+                        <button 
+                            onClick={handleRenameFile}
+                            className="px-2 py-1 bg-green-600 hover:bg-green-500 rounded text-sm"
+                        >
+                            Save
+                        </button>
+                        <button 
+                            onClick={() => setIsRenamingFile(false)}
+                            className="px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-sm"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-300 truncate">{fileName}</span>
+                        <button
+                            onClick={() => {
+                                setNewFileName(fileName);
+                                setIsRenamingFile(true);
+                            }}
+                            className="p-1 hover:bg-gray-700 rounded"
+                            title="Rename file"
+                        >
+                            <Edit size={12} className="text-gray-400" />
+                        </button>
+                    </div>
+                )}
                 <div className="flex gap-2">
-                    <button onClick={handleFileSave} disabled={!fileChanged} className="px-3 py-1 bg-green-600 hover:bg-green-500 rounded text-sm disabled:opacity-50">Save</button>
+                    <button 
+                        onClick={handleFileSave} 
+                        disabled={!fileChanged || isSaving} 
+                        className={`px-3 py-1 rounded text-sm transition-colors ${
+                            !fileChanged || isSaving 
+                            ? 'bg-gray-600 opacity-50 cursor-not-allowed' 
+                            : 'bg-green-600 hover:bg-green-500'
+                        }`}
+                    >
+                        {isSaving ? 'Saving...' : 'Save'}
+                    </button>
                     <button onClick={() => setIsEditing(false)} className="px-3 py-1 bg-gray-600 hover:bg-gray-500 rounded text-sm">Close</button>
                 </div>
             </div>
@@ -1866,7 +2306,8 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
                 <textarea value={fileContent} onChange={(e) => handleFileContentChange(e.target.value)} className="w-full h-full bg-gray-900 text-gray-200 p-4 font-mono text-sm resize-none focus:outline-none"/>
             </div>
         </div>
-    );
+        );
+    };
     const renderChatView = () => (
         <div className="flex-1 flex flex-col min-h-0">
             <div className="p-2 border-b theme-border text-xs theme-text-muted flex-shrink-0 theme-bg-secondary">
@@ -2217,6 +2658,59 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
                     </button>
                 </div>
             )}
+            {/* File Context Menu */}
+            {fileContextMenuPos && (
+                <div
+                    className="fixed theme-bg-secondary theme-border border rounded shadow-lg py-1 z-50"
+                    style={{ top: fileContextMenuPos.y, left: fileContextMenuPos.x }}
+                    onMouseLeave={() => setFileContextMenuPos(null)}
+                >
+                    <button
+                        onClick={() => handleApplyPromptToFiles('summarize')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <MessageSquare size={16} />
+                        <span>Summarize Files ({selectedFiles.size})</span>
+                    </button>
+                    <button
+                        onClick={() => handleApplyPromptToFilesInInput('summarize')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <MessageSquare size={16} />
+                        <span>Summarize in Input Field ({selectedFiles.size})</span>
+                    </button>
+                    <div className="border-t theme-border my-1"></div>
+                    <button
+                        onClick={() => handleApplyPromptToFiles('analyze')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <Edit size={16} />
+                        <span>Analyze Files ({selectedFiles.size})</span>
+                    </button>
+                    <button
+                        onClick={() => handleApplyPromptToFilesInInput('analyze')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <Edit size={16} />
+                        <span>Analyze in Input Field ({selectedFiles.size})</span>
+                    </button>
+                    <div className="border-t theme-border my-1"></div>
+                    <button
+                        onClick={() => handleApplyPromptToFiles('refactor')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <Code2 size={16} />
+                        <span>Refactor Code ({selectedFiles.size})</span>
+                    </button>
+                    <button
+                        onClick={() => handleApplyPromptToFiles('document')}
+                        className="flex items-center gap-2 px-4 py-2 theme-hover w-full text-left theme-text-primary"
+                    >
+                        <FileText size={16} />
+                        <span>Document Code ({selectedFiles.size})</span>
+                    </button>
+                </div>
+            )}
         </div>
     );
 
@@ -2336,9 +2830,9 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
     );
 
     const renderMainContent = () => (
-    <main className={`flex-1 flex flex-col bg-gray-900 ${isDarkMode ? 'dark-mode' : 'light-mode'} overflow-hidden`}>
-        {isEditing ? renderFileEditor() : renderChatView()}
-    </main>
+        <main className={`flex-1 flex flex-col bg-gray-900 ${isDarkMode ? 'dark-mode' : 'light-mode'} overflow-hidden`}>
+            {isEditing ? renderFileEditor() : renderChatView()}
+        </main>
     );
 
     const renderModals = () => (
@@ -2350,6 +2844,54 @@ const handleApplyPromptToCurrentConversation = async (operationType, customPromp
             <PhotoViewer isOpen={photoViewerOpen} onClose={() => setPhotoViewerOpen(false)} type={photoViewerType}/>
         </>
     );
+
+    // --- NEW: Missing handler functions ---
+    const handleOpenNpcTeamMenu = () => {
+        setNpcTeamMenuOpen(true);
+    };
+
+    const handleCloseNpcTeamMenu = () => {
+        setNpcTeamMenuOpen(false);
+    };
+
+    const handleSearchResultSelect = async (conversationId, searchTerm) => {
+        // First, select the conversation. This will load its messages.
+        await handleConversationSelect(conversationId);
+        
+        // After messages are loaded (handleConversationSelect is async),
+        // we need to wait for the state to update. We use a short timeout
+        // to allow React to re-render with the new messages.
+        setTimeout(() => {
+            // Access the latest messages from the state `allMessages`
+            setAllMessages(currentMessages => {
+                const results = [];
+                currentMessages.forEach((msg, index) => {
+                    if (msg.content && msg.content.toLowerCase().includes(searchTerm.toLowerCase())) {
+                        results.push({
+                            messageId: msg.id || msg.timestamp,
+                            index: index,
+                            content: msg.content
+                        });
+                    }
+                });
+
+                setMessageSearchResults(results);
+                if (results.length > 0) {
+                    const firstResultId = results[0].messageId;
+                    setActiveSearchResult(firstResultId);
+                    
+                    // Scroll to the first result
+                    setTimeout(() => {
+                        const messageElement = document.getElementById(`message-${firstResultId}`);
+                        if (messageElement) {
+                            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }, 100);
+                }
+                return currentMessages; // Return original messages, no change needed here
+            });
+        }, 100); // Small delay to ensure messages are in state
+    };
 
     // --- Main Return uses the Render Functions ---
     return (
