@@ -1,38 +1,60 @@
 {
   "name": "npc-studio",
-  "version": "1.0.0",
-  "description": "The premier interface for the npcsh interpreter.",
+  "version": "0.0.1",
+  "description": "The premier AI IDE powered by the NPC Toolkit.",
   "author": "Chris Agostino <info@npcworldwi.de>",
   "main": "src/main.js",
+  "files": [
+    "bin/cli.js",
+    "dist/index.html",
+    "dist/assets/",
+    "src/",
+    "assets/icon.png"
+  ],
   "scripts": {
     "generate-icons": "electron-icon-builder --input=./assets/icon.png --output=./build",
-    "start": "electron .",
+    "start": "NODE_ENV=development electron .",
     "dev": "vite",
     "build:vite": "vite build",
     "build": "npm run build:vite && electron-builder",
     "preview": "vite preview",
     "rebuild": "electron-rebuild",
-    "postinstall": "electron-rebuild",
+    "electron:install-deps": "electron-builder install-app-deps",
+    "electron:rebuild": "npx electron-rebuild --module-dir . --which-module sqlite3 --force",
     "electron:build": "electron-builder",
-    "pack": "npm run build && npm run electron:build"
+    "pack": "npm run build && npm run electron:build",
+    "prepare": "npm run build:vite"
   },
   "build": {
     "appId": "com.npc_studio.chat",
     "productName": "npc-studio",
-    "files": [
-      "dist/**/*",
-      "src/**/*",
-      "package.json"
-    ],
     "directories": {
       "buildResources": "assets",
       "output": "dist-electron"
     },
-    "win": {
-      "icon": "assets/icon.png"
-    },
+    "files": [
+      "dist/**/*",
+      "src/**/*",
+      "package.json",
+      "node_modules/sqlite3/**/*"
+    ],
     "mac": {
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "extraResources": [
+        {
+          "from": "dist/resources/backend/npc_studio_serve",
+          "to": "backend/npc_studio_serve"
+        }
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.png",
+      "extraResources": [
+        {
+          "from": "dist/resources/backend/npc_studio_serve.exe",
+          "to": "backend/npc_studio_serve.exe"
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -40,7 +62,13 @@
         "AppImage"
       ],
       "category": "Utility",
-      "icon": "build/icons"
+      "icon": "build/icons",
+      "extraResources": [
+        {
+          "from": "dist/resources/backend/npc_studio_serve",
+          "to": "backend/npc_studio_serve"
+        }
+      ]
     },
     "extraResources": [
       {
@@ -51,13 +79,18 @@
         "from": "assets",
         "to": "assets"
       }
-    ]
-  
+    ],
+    "asarUnpack": [
+      "node_modules/sqlite3/**/*"
+    ],
+    "buildDependenciesFromSource": false,
+    "nodeGypRebuild": false,
+    "npmRebuild": false,
+    "forceCodeSigning": false
   },
   "dependencies": {
     "@headlessui/react": "^2.2.0",
     "@supabase/supabase-js": "^2.47.15",
-    "better-sqlite3": "^11.8.1",
     "debounce": "^2.0.0",
     "electron-store": "^10.0.1",
     "install": "^0.13.0",
@@ -68,11 +101,14 @@
     "path": "^0.12.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-markdown": "^9.0.3",
+    "react-markdown": "^9.1.0",
+    "react-syntax-highlighter": "^15.6.1",
     "remark-gfm": "^4.0.1",
+    "sqlite3": "^5.0.11"
     "remark-math": "^6.0.0"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.16",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "electron": "^25.9.8",
@@ -85,5 +121,8 @@
     "supabase": "^2.6.8",
     "tailwindcss": "^3.4.17",
     "vite": "^6.2.1"
+  },
+  "engines": {
+    "node": ">=16"
   }
 }

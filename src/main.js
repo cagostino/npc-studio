@@ -9,6 +9,7 @@ const sqlite3 = require('better-sqlite3');
 const dbPath = path.join(os.homedir(), 'npcsh_history.db');
 const fetch = require('node-fetch');
 const { dialog } = require('electron');
+const crypto = require('crypto');
 
 const logFilePath = path.join(os.homedir(), '.npc_studio', 'app.log');
 const logStream = fs.createWriteStream(logFilePath, { flags: 'a' });
@@ -29,6 +30,13 @@ const DEFAULT_CONFIG = {
   provider: 'ollama',
   npc: 'sibiji',
 };
+
+function generateId() {
+  return crypto.randomUUID(); // Requires crypto module
+}
+
+const activeStreams = new Map();
+
 
 let isCapturingScreenshot = false;
 
@@ -98,9 +106,20 @@ app.whenReady().then(async () => {
 
   try {
     log('Starting backend server...');
-    const npcPath = path.join(os.homedir(), 'npcww', 'npcsh', '.venv', 'Scripts', 'npc');
-
-    backendProcess = spawn(npcPath, ['serve', '-p', '5337'], {
+    // Use the bundled Python executable instead of 'npc serve'
+    const executableName = process.platform === 'win32' ? 'npc_studio_serve.exe' : 'npc_studio_serve';
+    const backendPath = app.isPackaged 
+      ? path.join(process.resourcesPath, 'backend', executableName)
+      : path.join(app.getAppPath(), 'dist', 'resources', 'backend', executableName);
+    
+    log(`Using backend path: ${backendPath}`);
+    
+    // Make sure it's executable
+    if (app.isPackaged && fs.existsSync(backendPath)) {
+      fs.chmodSync(backendPath, '755');
+    }
+    
+    backendProcess = spawn(backendPath, {
       stdio: 'inherit',
       env: {
         ...process.env,
@@ -119,6 +138,18 @@ app.whenReady().then(async () => {
 
     backendProcess.on('error', (err) => {
       console.error('Failed to start backend server:', err);
+      // Try fallback to npc serve if bundled server fails
+      log('Attempting fallback to npc serve...');
+      backendProcess = spawn('npc', ['serve', '-p', '5337'], {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          CORNERIA_DATA_DIR: dataPath,
+          NPC_STUDIO_PORT: '5337',
+          FLASK_DEBUG: '1',
+          PYTHONUNBUFFERED: '1',
+        },
+      });
     });
     
     // Wait for server to be ready before proceeding
@@ -440,11 +471,22 @@ if (!gotTheLock) {
         }
       });
     });
-    const htmlPath = path.join(app.getAppPath(), 'dist', 'index.html');
-    mainWindow.loadFile(htmlPath)
-    console.log(`Loading from packaged app path: ${htmlPath}`);
-
-    mainWindow.webContents.openDevTools();
+    
+    // Check if we're in development mode
+    const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+    
+    if (isDev) {
+      // Load from Vite dev server
+      mainWindow.loadURL('http://localhost:5173');
+      console.log('Loading from Vite dev server: http://localhost:5173');
+    } else {
+      // Load from built files
+      const htmlPath = path.join(app.getAppPath(), 'dist', 'index.html');
+      mainWindow.loadFile(htmlPath);
+      console.log(`Loading from packaged app path: ${htmlPath}`);
+    }
+  
+    //mainWindow.webContents.openDevTools();
 
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
       console.error('Failed to load:', errorCode, errorDescription);
@@ -540,7 +582,28 @@ if (!gotTheLock) {
     }
   });
 
-  // In main.js
+  ipcMain.handle('interruptStream', async (event, streamIdToInterrupt) => {
+    if (!activeStreams.has(streamIdToInterrupt)) {
+      return { success: false, error: 'Stream not found' };
+    }
+  
+    try {
+      const { stream } = activeStreams.get(streamIdToInterrupt);
+      
+      // Destroy the stream and clean up
+      if (stream && typeof stream.destroy === 'function') {
+        stream.destroy();
+      }
+      
+      activeStreams.delete(streamIdToInterrupt);
+      return { success: true };
+      
+    } catch (error) {
+      console.error('Error interrupting stream:', error);
+      return { success: false, error: error.message };
+    }
+  });
+  
   ipcMain.handle('wait-for-screenshot', async (event, screenshotPath) => {
     const maxAttempts = 20; // 10 seconds total
     const delay = 500; // 500ms between attempts
@@ -684,51 +747,43 @@ app.on('will-quit', () => {
     }
     return null;
   });
-  ipcMain.handle('get-tools-global', async () => {
+  ipcMain.handle('get-jinxs-global', async () => {
     try {
-        const response = await fetch('http://127.0.0.1:5337/api/tools/global', {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
+        const response = await fetch('http://127.0.0.1:5337/api/jinxs/global');
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-
-        return await response.json();
+        
+        const data = await response.json();
+        console.log('Global jinxs data:', data); // Log the data
+        return data; // Make sure we're returning the whole response
     } catch (err) {
-        console.error('Error loading global tools:', err);
-        return { error: err.message };
+        console.error('Error loading global jinxs:', err);
+        return { jinxs: [], error: err.message };
     }
 });
 
-ipcMain.handle('get-tools-project', async (event, currentPath) => {
+ipcMain.handle('get-jinxs-project', async (event, currentPath) => {
   try {
-      // Correctly interpolate `currentPath` into the URL
-      const response = await fetch(`http://127.0.0.1:5337/api/tools/project?currentPath=${encodeURIComponent(currentPath)}`, {
-          method: 'GET', // Use GET method
-          headers: {
-              'Content-Type': 'application/json'
-          },
-          // Remove the `body` for GET requests
-      });
-
+      const url = `http://127.0.0.1:5337/api/jinxs/project?currentPath=${encodeURIComponent(currentPath)}`;
+      console.log('Fetching project jinxs from URL:', url);
+      
+      const response = await fetch(url);
       if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
       }
-
-      return await response.json();
+      
+      const data = await response.json();
+      console.log('Project jinxs data:', data); // Log the data
+      return data; // Make sure we're returning the whole response
   } catch (err) {
-      console.error('Error loading project tools:', err);
-      return { error: err.message };
+      console.error('Error loading project jinxs:', err);
+      return { jinxs: [], error: err.message };
   }
 });
-
-ipcMain.handle('save-tool', async (event, data) => {
+  ipcMain.handle('save-jinx', async (event, data) => {
     try {
-        const response = await fetch('http://127.0.0.1:5337/api/tools/save', {
+        const response = await fetch('http://127.0.0.1:5337/api/jinxs/save', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -742,7 +797,7 @@ ipcMain.handle('save-tool', async (event, data) => {
 
         return await response.json();
     } catch (err) {
-        console.error('Error saving tool:', err);
+        console.error('Error saving jinx:', err);
         return { error: err.message };
     }
 });
@@ -761,53 +816,107 @@ ipcMain.handle('save-tool', async (event, data) => {
         return { error: error.message };
     }
 });
+
+
+
 ipcMain.handle('executeCommandStream', async (event, data) => {
+  const currentStreamId = data.streamId || generateId(); // Should always have data.streamId from new React code
+  log(`[Main Process] executeCommandStream: Starting. streamId: ${currentStreamId}, command: ${data.commandstr ? data.commandstr.substring(0,50) : 'N/A'}...`);
+
   try {
-    const response = await fetch('http://127.0.0.1:5337/api/stream', {
+    const apiUrl = 'http://127.0.0.1:5337/api/stream';
+    log(`[Main Process] executeCommandStream: Fetching from ${apiUrl} for streamId ${currentStreamId}`);
+    
+    // Create the request payload, including the npcSource parameter
+    const payload = {
+      commandstr: data.commandstr,
+      currentPath: data.currentPath,
+      conversationId: data.conversationId,
+      model: data.model,
+      npc: data.npc,
+      npcSource: data.npcSource || 'global', // Add the npcSource parameter (project or global)
+      attachments: data.attachments || []
+    };
+    
+    log(`[Main Process] executeCommandStream: Payload for streamId ${currentStreamId}:`, JSON.stringify(payload));
+    
+    const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        commandstr: data.commandstr,
-        currentPath: data.currentPath,
-        conversationId: data.conversationId,
-        model: data.model,
-        npc: data.npc,
-        attachments: data.attachments || [], // Add support for attachments
-      }), 
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
 
+    log(`[Main Process] executeCommandStream: Backend response status for streamId ${currentStreamId}: ${response.status}`);
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
+      const errorText = await response.text();
+      log(`[Main Process] executeCommandStream: Backend error for streamId ${currentStreamId}: ${response.status} - ${errorText}`);
+      throw new Error(`HTTP error! Status: ${response.status}. Body: ${errorText}`);
     }
 
-    // Use Node.js streams to handle the response body
     const stream = response.body;
+    if (!stream) {
+        log(`[Main Process] executeCommandStream: No response body (stream) from backend for streamId ${currentStreamId}.`);
+        event.sender.send('stream-error', { streamId: currentStreamId, error: 'Backend returned no stream data.' });
+        return { error: 'Backend returned no stream data.', streamId: currentStreamId };
+    }
+    
+    activeStreams.set(currentStreamId, { stream, eventSender: event.sender });
+    log(`[Main Process] executeCommandStream: Stream ${currentStreamId} added to activeStreams. Listening for data...`);
 
-    // Listen for data events
-    stream.on('data', (chunk) => {
-      // Send each chunk to the frontend
-      event.sender.send('stream-data', chunk.toString());
-    });
+    // IIFE to capture currentStreamId for async handlers
+    (function(capturedStreamId) {
+      let chunkCount = 0;
+      stream.on('data', (chunk) => {
+        chunkCount++;
+        const chunkContent = chunk.toString();
+        log(`[Main Process] executeCommandStream: Stream data CHUNK #${chunkCount} for streamId ${capturedStreamId}: ${chunkContent.substring(0, 100)}...`);
+        if (event.sender.isDestroyed()) {
+            log(`[Main Process] executeCommandStream: Renderer destroyed for streamId ${capturedStreamId}. Stopping stream.`);
+            stream.destroy();
+            activeStreams.delete(capturedStreamId);
+            return;
+        }
+        event.sender.send('stream-data', {
+          streamId: capturedStreamId,
+          chunk: chunkContent
+        });
+      });
 
-    // Listen for the end of the stream
-    stream.on('end', () => {
-      // Notify the frontend that the stream is complete
-      event.sender.send('stream-complete');
-    });
+      stream.on('end', () => {
+        log(`[Main Process] executeCommandStream: Stream ENDED for streamId ${capturedStreamId}. Total chunks: ${chunkCount}.`);
+        if (!event.sender.isDestroyed()) {
+            event.sender.send('stream-complete', { streamId: capturedStreamId });
+        }
+        activeStreams.delete(capturedStreamId);
+      });
 
-    // Listen for errors
-    stream.on('error', (err) => {
-      console.error('Stream error:', err);
-      event.sender.send('stream-error', err.message);
-    });
+      stream.on('error', (err) => {
+        log(`[Main Process] executeCommandStream: Stream ERROR for streamId ${capturedStreamId}: ${err.message}`);
+        if (!event.sender.isDestroyed()) {
+            event.sender.send('stream-error', {
+              streamId: capturedStreamId,
+              error: err.message
+            });
+        }
+        activeStreams.delete(capturedStreamId);
+      });
+    })(currentStreamId);
+
+    return { streamId: currentStreamId }; // Acknowledge stream setup
+
   } catch (err) {
-    console.error('Error in executeCommandStream:', err);
-    event.sender.send('stream-error', err.message);
+    log(`[Main Process] executeCommandStream: CATCH block error for streamId ${currentStreamId}: ${err.message}`);
+    if (event.sender && !event.sender.isDestroyed()) {
+        event.sender.send('stream-error', {
+          streamId: currentStreamId, // The ID it was trying to use
+          error: `Failed to set up stream: ${err.message}`
+        });
+    }
+    return { error: `Failed to set up stream: ${err.message}`, streamId: currentStreamId };
   }
 });
-// To these:
+
+
 ipcMain.handle('get-attachment', async (event, attachmentId) => {
   const response = await fetch(`http://127.0.0.1:5337/api/attachment/${attachmentId}`);
   return response.json();
@@ -822,19 +931,16 @@ ipcMain.handle('executeCommand', async (_, data) => {
     try {
       console.log('Executing command:', data);
       console.log('Data type:', typeof data);
-      const commandString = data.commandstr;
-      const currentPath = data.currentPath || DEFAULT_CONFIG.baseDir;
-      const conversationId = data.conversationId || null;
-
+      
       const response = await fetch('http://127.0.0.1:5337/api/execute', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          commandstr: commandString,
-          currentPath,
-          conversationId,
+          commandstr: data.commandstr,
+          currentPath: data.current_path || data.currentPath || DEFAULT_CONFIG.baseDir,
+          conversationId: data.conversationId || null,
           model: data.model || DEFAULT_CONFIG.model,
           npc: data.npc || DEFAULT_CONFIG.npc
         })
@@ -846,7 +952,8 @@ ipcMain.handle('executeCommand', async (_, data) => {
       }
       return result;
     } catch (err) {
-      throw err;
+      console.error('Error in executeCommand:', err);
+      return { error: err.message };
     }
   });
 
@@ -1042,7 +1149,7 @@ ipcMain.handle('executeCommand', async (_, data) => {
 
   ipcMain.handle('readDirectoryStructure', async (_, dirPath) => {
     const structure = {};
-    const allowedExtensions = ['.py', '.md', '.js', '.json', '.txt', '.yaml', '.yml', '.html', '.css', '.npc', '.tool'];
+    const allowedExtensions = ['.py', '.md', '.js', '.json', '.txt', '.yaml', '.yml', '.html', '.css', '.npc', '.jinx'];
     //console.log(`[Main Process] readDirectoryStructure called for: ${dirPath}`); // LOG 1
 
     try {
@@ -1225,3 +1332,14 @@ app.on('window-all-closed', () => {
 
   console.log('MAIN PROCESS SETUP COMPLETE');
 }
+
+// Add file rename functionality
+  ipcMain.handle('renameFile', async (_, oldPath, newPath) => {
+    try {
+      await fsPromises.rename(oldPath, newPath);
+      return { success: true, error: null };
+    } catch (err) {
+      console.error('Error renaming file:', err);
+      return { success: false, error: err.message };
+    }
+  });

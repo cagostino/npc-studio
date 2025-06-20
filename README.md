@@ -3,15 +3,30 @@
 </p>
 
 
-# npc-studio
+# NPC Studio
 
-The AI application for Agent development.
+NPC Studio is an AI IDE that lets users have AI conversations, edit files, explore data, execute code, and much more.
 
+
+## Installation
+When installed via the executables or if you manually build npc-studio yourself, then it will be available as
+```bash
+npc-studio
+```
+
+### Requirements
+
+- Node.js 16 or higher
+- Python 3.8 or higher (for the backend)
+- Ollama (optional, for local models)
 
 ## Chat with Agents and organize by project path
-- NPC Studio gives users the capability to organize their conversations with AI agentst in a natural and convenient way. Users can easily change working directories and separate their conversations by project path.
+- NPC Studio gives users the capability to organize their conversations with AI agents in a natural and convenient way. Users can easily change working directories and separate their conversations by project path.
 
 ![npc studio chat window interface](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/chat_window.png)
+
+See thinking traces from agents:
+![npc studio chat window thinking trace](https://raw.githubusercontent.com/cagostino/npc-studio/main/gh_images/reasoning.png)
 
 - Aggregate conversations:
 
@@ -118,14 +133,5 @@ NPC Studio is licensed under AGPLv3 with additional terms explicitly prohibiting
 
 
 ### items to do...
-
-letting ppl see lineage in npc team
--finish markdown rendering
--add a stop button
--add copy right lcik
--add a markdown render
---dark light theme halfway thru
---fix npc team menu
--fix tool menu
--database ovoervieiw tab
--
+- letting ppl see lineage in npc team
+- database overview tab

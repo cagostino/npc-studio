@@ -173,3 +173,5 @@ pyinstaller*
 # PyPI configuration file
 .pypirc
 node_modules
+
+out/
