@@ -2450,7 +2450,7 @@ const handleFileContextMenu = (e, filePath) => {
                         )}
     
                         {/* Only show the number of messages specified by displayedMessageCount */}
-                        {allMessages.slice(0, displayedMessageCount).map((message) => {
+                        {allMessages.slice(-displayedMessageCount).map((message) => {
                             const showStreamingIndicators = !!message.isStreaming;
                             const messageId = message.id || message.timestamp;
                             const isSelected = selectedMessages.has(messageId);
